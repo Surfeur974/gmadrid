@@ -1,0 +1,138 @@
+;====================Set to Maestro mode assembler =============================
+ocnSetXLMode("assembler")
+ocnxlProjectDir( "/fsuplnx/sftemp/E1013475/Sim/projects/naos_cmos/E1013475/ws1" )
+ocnxlTargetCellView("NAOS_SIM" "gmid_test" "maestro")
+ocnxlResultsLocation( "" )
+ocnxlSimResultsLocation( "" )
+ocnxlMaxJobFail( 20 )
+
+;====================== Tests setup ============================================
+
+;---------- Test "NAOS_SIM_gmid_test_1" ------------- 
+ocnxlBeginTest("NAOS_SIM_gmid_test_1")
+simulator( 'spectre )
+design( "NAOS_SIM" "gmid_test" "schematic_nmos4")
+modelFile( 
+    '("$AMS_DIR/spectre/c35/processOption.scs" "")
+    '("$AMS_DIR/spectre/c35/cmos53.scs" "cmostm")
+    '("$AMS_DIR/spectre/c35/res.scs" "restm")
+    '("$AMS_DIR/spectre/c35/cap.scs" "captm")
+    '("$AMS_DIR/spectre/c35/bip.scs" "biptm")
+    '("$AMS_DIR/spectre/c35/photodiode.scs" "phototm")
+    '("$AMS_DIR/spectre/c35/ind.scs" "indtm")
+    '("$AMS_DIR/spectre/c35/esddiode.scs" "esddiodetm")
+)
+analysis('noise ?freq "1"  ?start ""  ?stop ""  
+		?oprobe "/vnoi"  ?iprobe ""  )
+analysis('dc ?saveOppoint t  )
+desVar(	  "Wx" 5u	)
+desVar(	  "Lx" "350n 700n 1u 2u 5u 10u"	)
+desVar(	  "vb" "0 100m"	)
+desVar(	  "vd" "0:50m:2.7"	)
+desVar(	  "vg" "0:50m:2.7"	)
+envOption(
+	'analysisOrder  list("dc" "pz" "dcmatch" "stb" "tran" "envlp" "ac" "lf" "noise" "xf" "sp" "pss" "pac" "pstb" "pnoise" "pxf" "psp" "qpss" "qpac" "qpnoise" "qpxf" "qpsp" "hb" "hbac" "hbstb" "hbnoise" "hbxf" "sens" "acmatch") 
+	'paramRangeCheckFile  "" 
+)
+option(	'pzSeverity  "None" 
+	'noiseSeverity  "None" 
+	'spSeverity  "None" 
+	'acSeverity  "None" 
+	'dcOpSeverity  "None" 
+	'dcSeverity  "None" 
+	'tranSeverity  "None" 
+)
+option( ?categ 'turboOpts
+	'apsplus  t 
+	'uniMode  "Spectre" 
+)
+saveOption( ?simOutputFormat "" )
+saveOption( ?infoOptions list(list("modelParameter" "models" "rawfile" "" "" "" nil) list("element" "inst" "rawfile" "" "" "" nil) list("outputParameter" "output" "rawfile" "" "" "" nil) list("designParamVals" "parameters" "rawfile" "" "" "" nil) list("primitives" "primitives" "rawfile" "" "" "" nil) list("subckts" "subckts" "rawfile" "" "" "" nil) list("asserts" "assert" "rawfile" "" "" "" nil) list("extremeinfo" "all" "logfile" "" "yes" "" nil) list("allcap" "allcap" "file" "" "" "" nil) list("simStatistics" "simstat" "rawfile" "" "" "" nil) list("<Click_To_Add>" "none" "rawfile" "" "" "" nil) ) )
+saveOption( 'useprobes "no" )
+saveOption( 'currents "none" )
+saveOption( 'pwr "none" )
+saveOption( 'save "none" )
+temp( 27 ) 
+ocnxlOutputExpr( "pv(\"M1\" \"cdb\" ?result \"dcOpInfo\")" ?name "capbd" ?plot t ?evalType 'point)
+ocnxlOutputExpr( "pv(\"M1\" \"cbs\" ?result \"dcOpInfo\")" ?name "capbs" ?plot t ?evalType 'point)
+ocnxlOutputExpr( "pv(\"M1\" \"cdd\" ?result \"dcOpInfo\")" ?name "cdd" ?plot t)
+ocnxlOutputExpr( "pv(\"M1\" \"cgb\" ?result \"dcOpInfo\")" ?name "cgb" ?plot t)
+ocnxlOutputExpr( "pv(\"M1\" \"cgd\" ?result \"dcOpInfo\")" ?name "cgd" ?plot t)
+ocnxlOutputExpr( "pv(\"M1\" \"cgdovl\" ?result \"dcOpInfo\")" ?name "cgdo" ?plot t ?evalType 'point)
+ocnxlOutputExpr( "pv(\"M1\" \"cgg\" ?result \"dcOpInfo\")" ?name "cgg" ?plot t)
+ocnxlOutputExpr( "pv(\"M1\" \"cgs\" ?result \"dcOpInfo\")" ?name "cgs" ?plot t)
+ocnxlOutputExpr( "pv(\"M1\" \"cgsovl\" ?result \"dcOpInfo\")" ?name "cgso" ?plot t ?evalType 'point)
+ocnxlOutputExpr( "pv(\"M1\" \"css\" ?result \"dcOpInfo\")" ?name "css" ?plot t)
+ocnxlOutputExpr( "pv(\"M1\" \"gds\" ?result \"dcOpInfo\")" ?name "gds" ?plot t)
+ocnxlOutputExpr( "pv(\"M1\" \"gm\" ?result \"dcOpInfo\")" ?name "gm" ?plot t)
+ocnxlOutputExpr( "pv(\"M1\" \"gmbs\" ?result \"dcOpInfo\")" ?name "gmbs" ?plot t)
+ocnxlOutputExpr( "pv(\"M1\" \"id\" ?result \"dcOpInfo\")" ?name "id" ?plot t)
+ocnxlOutputExpr( "pv(\"M1\" \"vth\" ?result \"dcOpInfo\")" ?name "vth" ?plot t)
+ocnxlOutputExpr( "(- pv(\"M1\" \"vsb\" ?result \"dcOpInfo\"))" ?name "vb" ?plot t ?evalType 'point)
+ocnxlOutputExpr( "pv(\"M1\" \"vds\" ?result \"dcOpInfo\")" ?name "vd" ?plot t ?evalType 'point)
+ocnxlOutputExpr( "pv(\"M1\" \"vgs\" ?result \"dcOpInfo\")" ?name "vg" ?plot t ?evalType 'point)
+ocnxlOutputExpr( "value(pv(\"M1\" \"id\" ?result \"noise\") 1)" ?name "nid" ?plot t)
+ocnxlOutputExpr( "value(pv(\"M1\" \"fn\" ?result \"noise\") 1)" ?name "sfl" ?plot t)
+ocnxlOutputExpr( "VAR(\"Lx\")" ?name "l" ?plot t ?evalType 'point)
+ocnxlEndTest() ; "NAOS_SIM_gmid_test_1"
+
+;====================== Sweeps setup ===========================================
+
+;====================== Model Group setup ==========================================
+
+;====================== Corners setup ==========================================
+
+;====================== Checks and Asserts setup ============================================
+ocnxlPutChecksAsserts(?netlist nil)
+
+;====================== Job setup ==============================================
+ocnxlJobSetup( '(
+	"autoresume" "0"
+	"blockemail" "1"
+	"communicationtimeout" "-1"
+	"configuretimeout" "300"
+	"defaultcpuvalue" "-1"
+	"defaultmemoryvalue" "-1"
+	"distributionmethod" "LBS"
+	"jobruntype" "ICRP"
+	"estimatecpuvalue" ""
+	"estimatememoryvalue" ""
+	"estimationsimulationmode" "1"
+	"jobqueue" "spectre_normal"
+	"jobresourcerequirements" "select[simtype=spectre_spectre_1]"
+	"lingertimeout" "60"
+	"maxjobs" "50"
+	"name" "farm_1core_custom"
+	"parallelnumprocs" "1"
+	"preemptivestart" "1"
+	"providecpuandmemorydata" "1"
+	"reconfigureimmediately" "0"
+	"runpointsvalue" "-1"
+	"runtimeout" "-1"
+	"scaleestimatedbycpu" "-1"
+	"scaleestimatedbymemory" "-1"
+	"showerrorwhenretrying" "1"
+	"showoutputlogerror" "1"
+	"startmaxjobsimmed" "1"
+	"starttimeout" "-1"
+	"userquotaspace" "0"
+	"userquotavalue" ""
+	"usesameprocess" "1"
+	"warndisklow" "1"
+	"warnthresholdvalue" "5000"
+) )
+;====================== Disabled items =========================================
+ocnxlSetAllVarsDisabled(t)
+ocnxlSetAllParametersDisabled(t)
+
+;====================== Run Mode Options ======================================
+
+;====================== Starting Point Info ======================================
+
+;====================== Run command ============================================
+ocnxlRun( ?mode 'sweepsAndCorners ?nominalCornerEnabled t ?allCornersEnabled nil ?allSweepsEnabled t)
+;ocnxlOutputSummary(?exprSummary t ?specSummary t ?detailed t ?wave t)
+;ocnxlOpenResults()
+ocnxlExportOutputView("gmid_long_NMOS4.csv" "Detail-Transpose")
+;====================== End XL Mode command ===================================
+ocnxlEndXLMode("assembler")
