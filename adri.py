@@ -119,3 +119,87 @@ def currentMirrorCascode(moslk, spec, param):
     mos['MOS7'] = {'NAME' : "MOS7", 'W' : w7, 'L' : l_mos, 'VGS' : vbias, 'VDS' : vds1, 'GM_ID' : gm7_id}
 
     return mos, perf
+
+def ota_5T_L_gmid(nmoslk,pmoslk, spec, param):
+        #Arg :  
+        #spec. : FU, CL, VDD, V_IC
+        #param. : l_mos, gm_id1, gm_id2
+    #return 
+        #perf : AV0, ibias, Vs
+        #MOS. : Name, W, L, VGS, VDS, gm_id
+    #Init output struc
+    param_length = len(param)
+    perf = {'av0' : np.full(param_length, np.nan), 'ibias' : np.full(param_length, np.nan)}
+    mos_unit = {'NAME' : np.full(param_length, np.nan),
+           'W' : np.full(param_length, np.nan),
+           'L' : np.full(param_length, np.nan),
+           'VGS' : np.full(param_length, np.nan),
+           'VDS' : np.full(param_length, np.nan),
+           'GM_ID' : np.full(param_length, np.nan)}
+    mos = {'MOS1' : mos_unit,'MOS2' : mos_unit}
+
+    #Get spec from args
+    fu = spec['fu']
+    cload = spec['cload']
+    vdd = spec['vdd']
+    vic = spec['vic']
+    #Get parameter from args
+    l_mos = param['l_mos']
+    gm_id1 = param['gm_id1']
+    gm_id2 = param['gm_id2']
+    ####################################
+    ####################################
+    ####################################
+    #gm and ID, from Spec and Hypothesis
+    gm1 = 2*3.14159*fu*cload
+    ibias = gm1 / gm_id1
+    #VGS from lookupVGS, L and GM_ID
+    # Find VDS1 and 
+    vgs1 = nmoslk.lookupVGS(GM_ID=gm_id1, L=l_mos, VDS=0.6, VSB=0) #Fist estimation with vds default
+    vgs2 = pmoslk.lookupVGS(GM_ID=gm_id2, L=l_mos, VDS=0.6, VSB=0) #Fist estimation with vds default
+    vgs2 = pmoslk.lookupVGS(GM_ID=gm_id2, L=l_mos, VDS=vgs2, VSB=0) #Second with VDS = VGS (current mirror)
+    vd = vdd - vgs2
+    vs = vic - vgs1
+    vds1 = vd - vs
+    vgs1 = nmoslk.lookupVGS(GM_ID=gm_id2, L=l_mos, VDS=vds1, VSB=0) #Second with VDS more accurate
+    vds2 = vgs2
+
+    #Calcul Gain
+    gds_id1 = nmoslk.look_up('GDS_ID', GM_ID=gm_id1, VDS=vds1, L=l_mos, VSB=0)
+    gds_id2 = pmoslk.look_up('GDS_ID', GM_ID=gm_id2, VDS=vds2, L=l_mos, VSB=0)
+    av0 = gm_id1 / (gds_id1 + gds_id2)
+
+    #print('AV0 = %.2F' % AV0)
+    #print('gm1 = %.2F uS' % (gm1 * 1e6))
+    #print('ID = %.2F uA before self loading' % (ID*1e6))
+
+    cselfloading = 0
+    for m in range(1,10,1):
+        #self loading
+        gm1 = 2*3.14159*fu*(cload+cselfloading)
+        ibias = gm1 / gm_id1
+        #Denormalization
+        jd1 = nmoslk.lookup('ID_W', GM_ID=gm_id1, VDS=vds1, L=l_mos, VSB=0)
+        jd2 = pmoslk.lookup('ID_W', GM_ID=gm_id2, VDS=vds2, L=l_mos, VSB=0)
+        w1 = ibias/jd1
+        w2 = ibias/jd2
+        #print('ID = %.2F uA' % (id* 1e6))
+        #print('W1 = %.2F um' % (W1))
+        #print('W2 = %.2F um' % (W2))
+        cdd1 = w1 * nmoslk.look_up('CDD_W', GM_ID=gm_id1, L=l_mos, VSB=0)
+        cdd2 = w2 * pmoslk.look_up('CDD_W', GM_ID=gm_id2, L=l_mos, VSB=0)
+        cgg1 = w1 * nmoslk.look_up('CGG_W', GM_ID=gm_id1, L=l_mos, VSB=0)
+        cselfloading = cdd1 + cdd2 
+        #+cgg1 if follower
+    #print('ID = %.2F uA before self loading' % (ID*1e6))
+
+    ###################################
+    ###################################
+    ###################################
+    ###################################
+    perf = {'AV0' : av0, 'ibias' : ibias, 'vs' : vs}
+    mos['MOS1'] = {'NAME' : "MOS1", 'W' : w1, 'L' : l_mos, 'VGS' : vgs1, 'VDS' : vds1, 'GM_ID' : gm_id1}
+    mos['MOS2'] = {'NAME' : "MOS2", 'W' : w2, 'L' : l_mos, 'VGS' : vgs2, 'VDS' : vds2, 'GM_ID' : gm_id2}
+    #print('AV0 = %.2F dB' % (20*np.log10(AV0)))
+    #print('VS = %.2F V ' % vs)
+    return mos, perf
