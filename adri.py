@@ -1,7 +1,21 @@
 import numpy as np
 from scipy.interpolate import interp1d
-# Interpolation function
+import matplotlib.pyplot as plt
+
+def coolPlot(xvar, yvar, xname, yname, title):
+    fig, ax1 = plt.subplots(figsize=(6, 4))
+    ax1.plot(xvar, yvar, color='black', linewidth=1.5)
+    ax1.set_xlabel(xname, fontsize=12)
+    ax1.set_ylabel(yname, fontsize=12)
+    ax1.grid(True, which='both', linestyle='-', linewidth=0.5, color='gray', alpha=0.7)
+    #ax1.ticklabel_format(axis='y', style='sci', scilimits=(-4, -4), useMathText=True)
+    ax1.legend(loc='center right', bbox_to_anchor=(1, 0.8), labels='label')
+    ax1.set_title(title, loc='left', fontsize=12, fontweight='bold')
+    plt.tight_layout()
+    plt.show()
+
 def interp1(x, y, value):
+    # Interpolation function
     # Perform cubic interpolation using interp1d
     f = interp1d(x, y, kind='cubic')
     return f(value)

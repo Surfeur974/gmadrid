@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MOSFET Explorer — gm/ID Design Tool</title>
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0c10;--surface:#111318;--surface2:#181c24;--border:#1f2430;
+  --accent:#00d4ff;--accent3:#7c3aed;--accent2:#ff6b35;
+  --text:#e2e8f0;--dim:#64748b;--muted:#2d3748;
+  --green:#22c55e;--red:#ef4444;--yellow:#f59e0b;
+  --mono:'JetBrains Mono',monospace;--display:'Syne',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:12px;height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+
+/* Header */
+header{border-bottom:1px solid var(--border);padding:8px 20px;display:flex;align-items:center;gap:16px;flex-shrink:0;background:linear-gradient(90deg,#0d1017,#111318);}
+.logo{font-family:var(--display);font-size:17px;font-weight:800;letter-spacing:-.5px;background:linear-gradient(135deg,var(--accent),var(--accent3));-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.logo-sub{color:var(--dim);font-size:9px;letter-spacing:2px;text-transform:uppercase;}
+.header-right{margin-left:auto;display:flex;align-items:center;gap:8px;}
+.status-pill{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--surface);font-size:10px;color:var(--dim);transition:all .3s;}
+.status-pill.ready{border-color:var(--green);color:var(--green);}
+.status-pill.loading{border-color:var(--accent);color:var(--accent);}
+.status-pill.error{border-color:var(--red);color:var(--red);}
+.status-dot{width:6px;height:6px;border-radius:50%;background:currentColor;}
+.status-pill.loading .status-dot{animation:pulse 1s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* Workspace */
+.workspace{display:flex;flex:1;min-height:0;}
+
+/* Sidebar */
+.sidebar{width:260px;min-width:260px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;flex-shrink:0;}
+.section{border-bottom:1px solid var(--border);padding:10px;}
+.sec-title{font-size:9px;letter-spacing:3px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;font-weight:600;}
+.dropzone{border:1px dashed var(--border);border-radius:6px;padding:14px 10px;text-align:center;cursor:pointer;transition:all .2s;background:var(--surface2);}
+.dropzone:hover,.dropzone.dragover{border-color:var(--accent);background:rgba(0,212,255,.04);}
+.dropzone-icon{font-size:20px;margin-bottom:5px;}
+.dropzone-text{color:var(--dim);font-size:10px;line-height:1.5;}
+.dropzone-text strong{color:var(--accent);}
+#fileInput{display:none;}
+.l-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:3px;max-height:110px;overflow-y:auto;}
+.l-chip{padding:3px 2px;border:1px solid var(--border);border-radius:3px;text-align:center;cursor:pointer;font-size:9px;color:var(--dim);transition:all .12s;user-select:none;}
+.l-chip:hover{border-color:var(--accent);color:var(--text);}
+.l-chip.selected{background:rgba(0,212,255,.15);border-color:var(--accent);color:var(--accent);}
+label.ctrl-label{display:block;font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px;text-transform:uppercase;}
+select{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:5px 8px;font-family:var(--mono);font-size:11px;outline:none;margin-bottom:8px;appearance:none;cursor:pointer;}
+select:focus{border-color:var(--accent);}
+select option{background:#1a1e2a;}
+input[type=range]{width:100%;padding:0;height:3px;background:var(--border);border:none;border-radius:2px;accent-color:var(--accent);margin-bottom:3px;cursor:pointer;}
+.slider-val{display:flex;justify-content:space-between;font-size:9px;color:var(--dim);margin-bottom:8px;}
+.btn{padding:5px 10px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;font-family:var(--mono);font-size:10px;transition:all .15s;}
+.btn:hover{border-color:var(--accent);color:var(--accent);}
+.btn.active{border-color:var(--accent);color:var(--accent);background:rgba(0,212,255,.08);}
+.btn-xs{padding:3px 6px;font-size:9px;}
+.btn-primary{background:var(--accent);color:var(--bg);border-color:var(--accent);font-weight:600;}
+.btn-primary:hover{background:#00b8e0;color:var(--bg);}
+.btn-row{display:flex;gap:4px;margin-bottom:8px;}
+.vars-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px;}
+.var-tag{background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:2px 6px;font-size:9px;color:var(--dim);cursor:pointer;transition:all .12s;}
+.var-tag:hover{border-color:var(--accent);color:var(--accent);}
+
+/* Plot grid */
+.plot-grid{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:1px;background:var(--border);min-width:0;min-height:0;position:relative;}
+.plot-panel{background:var(--bg);display:flex;flex-direction:column;min-width:0;min-height:0;}
+.panel-toolbar{display:flex;align-items:center;gap:4px;padding:4px 7px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap;cursor:pointer;}
+.plot-panel.active-panel .panel-toolbar{border-bottom-color:var(--accent);}
+.panel-num{font-size:9px;color:var(--muted);font-weight:600;letter-spacing:1px;min-width:18px;}
+.ax-lbl{font-size:9px;color:var(--muted);white-space:nowrap;letter-spacing:1px;text-transform:uppercase;}
+.panel-sel{background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:3px 5px;font-family:var(--mono);font-size:9px;outline:none;cursor:pointer;appearance:none;flex:1;min-width:0;}
+.panel-sel:focus{border-color:var(--accent);}
+.panel-expr{background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:3px 6px;font-family:var(--mono);font-size:9px;outline:none;flex:2;min-width:55px;}
+.panel-expr:focus{border-color:var(--accent);}
+.panel-expr.y2{border-style:dashed;}
+.panel-expr.has-error{border-color:var(--red);}
+.panel-expr::placeholder{color:var(--muted);}
+.panel-toggle{display:flex;align-items:center;gap:3px;font-size:9px;color:var(--dim);cursor:pointer;white-space:nowrap;}
+.panel-toggle input[type=checkbox]{accent-color:var(--accent);width:11px;height:11px;cursor:pointer;}
+.plot-area{flex:1;min-height:0;min-width:0;position:relative;}
+
+/* Cursor overlay */
+.cursor-overlay{position:absolute;inset:0;pointer-events:none;z-index:10;overflow:visible;}
+.cursor-line{stroke:rgba(255,255,255,.22);stroke-width:1;stroke-dasharray:4 3;}
+.cursor-tooltip{position:absolute;pointer-events:none;z-index:20;background:rgba(10,12,16,.93);border:1px solid #1f2430;border-radius:6px;padding:7px 10px;font-size:9px;color:#e2e8f0;line-height:1.8;white-space:nowrap;box-shadow:0 4px 20px rgba(0,0,0,.6);backdrop-filter:blur(6px);display:none;}
+.cursor-x-label{color:var(--accent);font-weight:600;margin-bottom:2px;font-size:10px;}
+.cursor-row{display:flex;align-items:center;gap:5px;}
+.cursor-swatch{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+
+/* Overlays */
+#loadingOverlay{position:fixed;inset:0;background:rgba(10,12,16,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:200;backdrop-filter:blur(4px);}
+#loadingOverlay.hidden{display:none;}
+.spinner{width:36px;height:36px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin-bottom:14px;}
+@keyframes spin{to{transform:rotate(360deg)}}
+#loadingMsg{color:var(--dim);font-size:12px;}
+#welcomeOverlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;z-index:5;pointer-events:none;}
+#welcomeOverlay.hidden{display:none;}
+.welcome-icon{font-size:36px;opacity:.3;}
+.welcome-text{font-size:12px;text-align:center;line-height:1.7;color:var(--muted);}
+
+::-webkit-scrollbar{width:3px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="logo">MOSFET Explorer</div>
+    <div class="logo-sub">gm/ID Design Tool</div>
+  </div>
+  <div class="header-right">
+    <button class="btn active" id="cursorBtn" onclick="toggleCursor()" style="font-size:9px">⊕ Curseur ON</button>
+    <button class="btn" id="toggleDataListBtn" onclick="toggleDataList()" style="font-size:9px">📋 Liste ON</button>
+    <div class="status-pill loading" id="statusPill">
+      <div class="status-dot"></div>
+      <span id="statusText">Init Pyodide…</span>
+    </div>
+  </div>
+</header>
+
+<div class="workspace">
+  <div class="sidebar">
+    <div class="section">
+      <div class="sec-title">Source de données</div>
+      <div class="dropzone" id="dropzone">
+        <div class="dropzone-icon">📂</div>
+        <div class="dropzone-text">Déposer un fichier <strong>.mat</strong><br>ou cliquer pour parcourir</div>
+      </div>
+      <input type="file" id="fileInput" accept=".mat">
+    </div>
+    <div class="section" id="lSection" style="display:none">
+      <div class="sec-title">Longueur de canal L (µm)</div>
+      <div class="btn-row">
+        <button class="btn btn-xs" onclick="selectAllL()">Tout</button>
+        <button class="btn btn-xs" onclick="selectNoneL()">Aucun</button>
+        <button class="btn btn-xs" onclick="selectDefaultL()">Défaut</button>
+      </div>
+      <div class="l-grid" id="lGrid"></div>
+    </div>
+    <div class="section" id="biasSection" style="display:none">
+      <div class="sec-title">Polarisation</div>
+      <label class="ctrl-label">VDS (V)</label>
+      <input type="range" id="vdsSlider" min="0" max="0" step="1" value="0" oninput="onBiasChange()">
+      <div class="slider-val">
+        <span id="vdsMin">0V</span>
+        <span id="vdsVal" style="color:var(--accent)">—</span>
+        <span id="vdsMax">1.8V</span>
+      </div>
+      <label class="ctrl-label">VSB (V)</label>
+      <select id="vsbSelect" onchange="onBiasChange()"></select>
+    </div>
+    <div class="section" id="varsSection" style="display:none">
+      <div class="sec-title">Variables — clic pour insérer</div>
+      <div class="vars-grid" id="varsGrid"></div>
+      <div style="margin-top:7px;font-size:9px;color:var(--muted);line-height:1.6">
+        Cliquer d'abord le champ expr d'un panel.<br>
+        <code style="color:var(--accent)">GM/(2*PI*CGG)</code>, <code style="color:var(--accent)">ID/W</code>…
+      </div>
+    </div>
+    <div class="section" id="redrawSection" style="display:none">
+      <button class="btn btn-primary" style="width:100%;font-size:10px" onclick="renderAllPanels()">▶ Redraw All</button>
+    </div>
+  </div>
+
+  <div class="plot-grid" id="plotGrid">
+    <div id="welcomeOverlay">
+      <div class="welcome-icon">⚡</div>
+      <div class="welcome-text">Charger un fichier <strong style="color:var(--accent)">.mat</strong><br>pour explorer les caractéristiques MOSFET</div>
+    </div>
+  </div>
+</div>
+
+<div id="loadingOverlay">
+  <div class="spinner"></div>
+  <div id="loadingMsg">Chargement Pyodide…</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════
+let pyodide = null;
+let matData = null;
+let selectedL = new Set();
+let activeExprEl = null;
+let cursorEnabled = true;
+let cursorX = null;
+let cursorLerp = null;
+let showDataList = true;
+
+const COLORS = [
+  '#00d4ff','#ff6b35','#7c3aed','#22c55e','#f59e0b',
+  '#ec4899','#14b8a6','#f97316','#8b5cf6','#06b6d4',
+  '#a3e635','#fb7185','#38bdf8','#fbbf24','#c084fc'
+];
+
+const PRESETS = [
+  {label:'GM_ID',       expr:'GM/ID'},
+  {label:'FT',          expr:'GM/(2*PI*CGG)'},
+  {label:'FT×GM_ID',    expr:'GM/(2*PI*CGG)*GM/ID'},
+  {label:'GMRO',        expr:'GM/GDS'},
+  {label:'VA',          expr:'ID/GDS'},
+  {label:'ID/W',        expr:'ID/W'},
+  {label:'VGS',         expr:'VGS'},
+  {label:'ID',          expr:'ID'},
+  {label:'GM',          expr:'GM'},
+  {label:'GDS',         expr:'GDS'},
+  {label:'CGG',         expr:'CGG'},
+  {label:'STH',         expr:'STH'},
+  {label:'SFL',         expr:'SFL'},
+];
+
+const DEFAULT_CFGS = [
+  {xExpr:'GM/ID', y1Expr:'GM/(2*PI*CGG)',  y2Expr:'',      logX:false, logY:true },
+  {xExpr:'GM/ID', y1Expr:'GM/GDS',         y2Expr:'',      logX:false, logY:true },
+  {xExpr:'GM/ID', y1Expr:'ID/W',           y2Expr:'',      logX:false, logY:true },
+  {xExpr:'VGS',   y1Expr:'GM/ID',          y2Expr:'',      logX:false, logY:false},
+];
+
+// ═══════════════════════════════════════════════════════════
+// PYODIDE INIT
+// ═══════════════════════════════════════════════════════════
+async function initPyodide() {
+  setStatus('loading', 'Chargement Pyodide…');
+  try {
+    pyodide = await loadPyodide({indexURL:'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/'});
+    document.getElementById('loadingMsg').textContent = 'Installation scipy…';
+    await pyodide.loadPackage(['scipy','numpy']);
+    setStatus('ready', 'Prêt — déposer un .mat');
+    document.getElementById('loadingOverlay').classList.add('hidden');
+    buildPanels();
+  } catch(e) {
+    setStatus('error', e.message);
+    document.getElementById('loadingMsg').textContent = 'Erreur: ' + e.message;
+  }
+}
+
+function setStatus(type, text) {
+  const p = document.getElementById('statusPill');
+  p.className = 'status-pill ' + type;
+  document.getElementById('statusText').textContent = text;
+}
+
+// ═══════════════════════════════════════════════════════════
+// FILE LOADING
+// ═══════════════════════════════════════════════════════════
+document.getElementById('dropzone').addEventListener('click', () => document.getElementById('fileInput').click());
+document.getElementById('fileInput').addEventListener('change', e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
+document.getElementById('dropzone').addEventListener('dragover', e => { e.preventDefault(); e.currentTarget.classList.add('dragover'); });
+document.getElementById('dropzone').addEventListener('dragleave', e => e.currentTarget.classList.remove('dragover'));
+document.getElementById('dropzone').addEventListener('drop', e => {
+  e.preventDefault(); e.currentTarget.classList.remove('dragover');
+  if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+});
+
+async function loadFile(file) {
+  if (!pyodide) { alert('Pyodide pas encore prêt…'); return; }
+  const ov = document.getElementById('loadingOverlay');
+  ov.classList.remove('hidden');
+  document.getElementById('loadingMsg').textContent = 'Lecture de ' + file.name + '…';
+  setStatus('loading', 'Chargement…');
+  try {
+    pyodide.FS.writeFile('/mat_file.mat', new Uint8Array(await file.arrayBuffer()));
+    document.getElementById('loadingMsg').textContent = 'Parsing MATLAB…';
+    const meta = JSON.parse(await pyodide.runPythonAsync(`
+import scipy.io as sio, numpy as np, json
+mat = sio.loadmat('/mat_file.mat')
+dk = [k for k in mat.keys() if not k.startswith('_')][0]
+d = mat[dk][0,0]
+fields = d.dtype.names
+axes = {ax: d[ax].flatten().tolist() for ax in ['L','VGS','VDS','VSB','W','NFING'] if ax in fields}
+params = [f for f in fields if d[f].dtype.kind in ('f','i','u') and d[f].ndim >= 3]
+json.dumps({'axes': axes, 'params': params})
+`));
+    matData = {
+      L: meta.axes.L, VGS: meta.axes.VGS, VDS: meta.axes.VDS,
+      VSB: meta.axes.VSB, W: meta.axes.W || null, params: {}
+    };
+    document.getElementById('loadingMsg').textContent = 'Extraction des tableaux…';
+    for (const p of meta.params) {
+      matData.params[p] = JSON.parse(
+        await pyodide.runPythonAsync(`import json,numpy as np; json.dumps(d['${p}'].astype(np.float64).tolist())`)
+      );
+    }
+    buildControls(meta.params);
+    setStatus('ready', file.name);
+    ov.classList.add('hidden');
+    document.getElementById('welcomeOverlay').classList.add('hidden');
+    renderAllPanels();
+  } catch(e) {
+    console.error(e);
+    setStatus('error', 'Erreur parsing');
+    document.getElementById('loadingMsg').textContent = 'Erreur: ' + e.message;
+    setTimeout(() => ov.classList.add('hidden'), 5000);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// BUILD PANELS
+// ═══════════════════════════════════════════════════════════
+function buildPanels() {
+  const grid = document.getElementById('plotGrid');
+  const welcome = document.getElementById('welcomeOverlay');
+
+  const presetOptHtml = PRESETS.map(p =>
+    '<option value="' + p.expr + '">' + p.label + '</option>'
+  ).join('') + '<option value="__custom__">— Custom —</option>';
+
+  for (let i = 0; i < 4; i++) {
+    const cfg = DEFAULT_CFGS[i];
+    const div = document.createElement('div');
+    div.className = 'plot-panel' + (i === 0 ? ' active-panel' : '');
+    div.id = 'panel' + i;
+
+    const mk = (tag, attrs) => {
+      const e = document.createElement(tag);
+      if (attrs) Object.entries(attrs).forEach(([k,v]) => e.setAttribute(k,v));
+      return e;
+    };
+
+    const tb = mk('div', {class:'panel-toolbar', id:'tb'+i});
+    tb.addEventListener('click', () => setActive(i));
+
+    const num = mk('span', {class:'panel-num'}); num.textContent = 'P'+(i+1);
+    const axX = mk('span', {class:'ax-lbl'}); axX.textContent = 'X';
+    const xSel = mk('select', {class:'panel-sel', id:'xSel'+i});
+    xSel.innerHTML = presetOptHtml;
+    xSel.addEventListener('change', () => onSelChange(i,'x'));
+    const xInp = mk('input', {class:'panel-expr', id:'xExpr'+i, placeholder:'expr…'});
+    xInp.value = cfg.xExpr;
+
+    const axY1 = mk('span', {class:'ax-lbl', style:'margin-left:3px'}); axY1.textContent = 'Y₁';
+    const y1Sel = mk('select', {class:'panel-sel', id:'y1Sel'+i});
+    y1Sel.innerHTML = presetOptHtml;
+    y1Sel.addEventListener('change', () => onSelChange(i,'y1'));
+    const y1Inp = mk('input', {class:'panel-expr', id:'y1Expr'+i, placeholder:'expr…'});
+    y1Inp.value = cfg.y1Expr;
+
+    const axY2 = mk('span', {class:'ax-lbl', style:'margin-left:3px'}); axY2.textContent = 'Y₂';
+    const y2Sel = mk('select', {class:'panel-sel', id:'y2Sel'+i});
+    y2Sel.innerHTML = presetOptHtml;
+    y2Sel.addEventListener('change', () => onSelChange(i,'y2'));
+    const y2Inp = mk('input', {class:'panel-expr y2', id:'y2Expr'+i, placeholder:'optionnel…'});
+    y2Inp.value = cfg.y2Expr || '';
+
+    const lxLbl = mk('label', {class:'panel-toggle'});
+    const lxCb  = mk('input', {type:'checkbox', id:'logX'+i}); lxCb.addEventListener('change', () => scheduleRender(i));
+    lxLbl.appendChild(lxCb); lxLbl.append(' lX');
+
+    const lyLbl = mk('label', {class:'panel-toggle'});
+    const lyCb  = mk('input', {type:'checkbox', id:'logY'+i}); lyCb.addEventListener('change', () => scheduleRender(i));
+    lyLbl.appendChild(lyCb); lyLbl.append(' lY');
+
+    [num, axX, xSel, xInp, axY1, y1Sel, y1Inp, axY2, y2Sel, y2Inp, lxLbl, lyLbl]
+      .forEach(el => tb.appendChild(el));
+
+    const plotWrap = mk('div', {class:'plot-area', id:'plotWrap'+i});
+    const plotDiv  = mk('div', {id:'plot'+i, style:'width:100%;height:100%'});
+    const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svg.setAttribute('class','cursor-overlay'); svg.id = 'cursorSvg'+i;
+    const cline = document.createElementNS('http://www.w3.org/2000/svg','line');
+    cline.setAttribute('class','cursor-line'); cline.id='cursorLine'+i;
+    cline.setAttribute('x1','0'); cline.setAttribute('y1','0');
+    cline.setAttribute('x2','0'); cline.setAttribute('y2','0');
+    cline.setAttribute('visibility','hidden');
+    const cdots = document.createElementNS('http://www.w3.org/2000/svg','g');
+    cdots.id='cursorDots'+i;
+    svg.appendChild(cline); svg.appendChild(cdots);
+    const tip = mk('div', {class:'cursor-tooltip', id:'cursorTip'+i});
+    plotWrap.appendChild(plotDiv); plotWrap.appendChild(svg); plotWrap.appendChild(tip);
+
+    div.appendChild(tb); div.appendChild(plotWrap);
+    grid.insertBefore(div, welcome);
+
+    // Wire events
+    xInp.addEventListener('focus', () => { activeExprEl = xInp; setActive(i); });
+    y1Inp.addEventListener('focus', () => { activeExprEl = y1Inp; setActive(i); });
+    y2Inp.addEventListener('focus', () => { activeExprEl = y2Inp; setActive(i); });
+    xInp.addEventListener('input', () => scheduleRender(i));
+    y1Inp.addEventListener('input', () => scheduleRender(i));
+    y2Inp.addEventListener('input', () => scheduleRender(i));
+
+    if (cfg.logX) document.getElementById('logX'+i).checked = true;
+    if (cfg.logY) document.getElementById('logY'+i).checked = true;
+
+    syncSel(i, 'x',  cfg.xExpr);
+    syncSel(i, 'y1', cfg.y1Expr);
+    syncSel(i, 'y2', cfg.y2Expr || '');
+  }
+}
+
+function setActive(idx) {
+  for (let i = 0; i < 4; i++) {
+    const p = document.getElementById('panel'+i);
+    if (p) p.classList.toggle('active-panel', i === idx);
+  }
+}
+
+function syncSel(panelIdx, axis, expr) {
+  const sel = document.getElementById(axis + 'Sel' + panelIdx);
+  if (!sel) return;
+  let found = false;
+  for (const o of sel.options) { if (o.value === expr) { sel.value = expr; found = true; break; } }
+  if (!found) sel.value = '__custom__';
+}
+
+function onSelChange(panelIdx, axis) {
+  const val = document.getElementById(axis + 'Sel' + panelIdx).value;
+  if (val !== '__custom__') document.getElementById(axis + 'Expr' + panelIdx).value = val;
+  scheduleRender(panelIdx);
+}
+
+function insertVar(v) {
+  if (!activeExprEl) return;
+  const el = activeExprEl;
+  const pos = el.selectionStart;
+  el.value = el.value.slice(0, pos) + v + el.value.slice(el.selectionEnd);
+  el.focus(); el.selectionStart = el.selectionEnd = pos + v.length;
+  const m = el.id.match(/Expr(\d)$/);
+  if (m) scheduleRender(parseInt(m[1]));
+}
+
+// ═══════════════════════════════════════════════════════════
+// CONTROLS
+// ═══════════════════════════════════════════════════════════
+function buildControls(params) {
+  ['lSection','biasSection','varsSection','redrawSection'].forEach(id =>
+    document.getElementById(id).style.display = '');
+
+  // L chips
+  const grid = document.getElementById('lGrid');
+  grid.innerHTML = ''; selectedL.clear();
+  matData.L.forEach((l, i) => {
+    const c = document.createElement('div');
+    c.className = 'l-chip'; c.dataset.idx = i;
+    c.textContent = l < 1 ? (l*1000).toFixed(0) : l.toFixed(1);
+    c.addEventListener('click', () => {
+      selectedL.has(i) ? selectedL.delete(i) : selectedL.add(i);
+      c.classList.toggle('selected', selectedL.has(i));
+      renderAllPanels();
+    });
+    grid.appendChild(c);
+  });
+  selectDefaultL();
+
+  // VDS slider
+  const sl = document.getElementById('vdsSlider');
+  sl.max = matData.VDS.length - 1;
+  sl.value = Math.round(matData.VDS.length * 0.5);
+  document.getElementById('vdsMin').textContent = matData.VDS[0].toFixed(2) + 'V';
+  document.getElementById('vdsMax').textContent = matData.VDS[matData.VDS.length-1].toFixed(2) + 'V';
+  updateVdsLabel();
+
+  // VSB
+  document.getElementById('vsbSelect').innerHTML =
+    matData.VSB.map((v,i) => '<option value="'+i+'">' + v.toFixed(2) + ' V</option>').join('');
+
+  // Vars grid
+  const allVars = [...Object.keys(matData.params), 'VGS','VDS','W','L','PI'];
+  document.getElementById('varsGrid').innerHTML = allVars
+    .map(v => '<div class="var-tag" onclick="insertVar(\'' + v + '\')">' + v + '</div>').join('');
+
+  // Update panel selects with actual params
+  const rawOpts = Object.keys(matData.params)
+    .map(p => '<option value="'+p+'">'+p+'</option>').join('');
+  const preOpts = PRESETS.map(p => '<option value="'+p.expr+'">'+p.label+'</option>').join('');
+  const allOpts = preOpts + '<optgroup label="— Raw —">' + rawOpts + '</optgroup>'
+    + '<option value="__custom__">— Custom —</option>';
+  for (let i = 0; i < 4; i++) {
+    const xE = document.getElementById('xExpr'+i).value;
+    const y1E = document.getElementById('y1Expr'+i).value;
+    const y2E = document.getElementById('y2Expr'+i).value;
+    ['xSel','y1Sel','y2Sel'].forEach((id,k) => {
+      document.getElementById(id+i).innerHTML = allOpts;
+    });
+    syncSel(i,'x',xE); syncSel(i,'y1',y1E); syncSel(i,'y2',y2E);
+  }
+}
+
+function updateVdsLabel() {
+  if (!matData) return;
+  const idx = parseInt(document.getElementById('vdsSlider').value);
+  document.getElementById('vdsVal').textContent = matData.VDS[idx].toFixed(3) + 'V';
+}
+function onBiasChange() { updateVdsLabel(); renderAllPanels(); }
+
+function selectAllL() {
+  matData.L.forEach((_,i) => selectedL.add(i));
+  document.querySelectorAll('.l-chip').forEach(c => c.classList.add('selected'));
+  renderAllPanels();
+}
+function selectNoneL() {
+  selectedL.clear();
+  document.querySelectorAll('.l-chip').forEach(c => c.classList.remove('selected'));
+  renderAllPanels();
+}
+function selectDefaultL() {
+  selectedL.clear();
+  const n = matData.L.length;
+  [0, Math.floor(n*.2), Math.floor(n*.45), Math.floor(n*.7), n-1].forEach(i => selectedL.add(i));
+  document.querySelectorAll('.l-chip').forEach(c =>
+    c.classList.toggle('selected', selectedL.has(parseInt(c.dataset.idx))));
+  renderAllPanels();
+}
+
+// ═══════════════════════════════════════════════════════════
+// EXPRESSION EVALUATION
+// ═══════════════════════════════════════════════════════════
+function evalExpr(expr, lIdx, vdsIdx, vsbIdx) {
+  if (!expr || !matData) return null;
+  const nVGS = matData.VGS.length;
+  const ctx = {};
+  for (const [name, d4] of Object.entries(matData.params)) {
+    ctx[name] = new Float64Array(nVGS);
+    for (let g = 0; g < nVGS; g++) ctx[name][g] = d4[lIdx][g][vdsIdx][vsbIdx];
+  }
+  ctx.VGS = new Float64Array(matData.VGS);
+  ctx.VDS = new Float64Array(nVGS).fill(matData.VDS[vdsIdx]);
+  const wArr = matData.W;
+  ctx.W = wArr && wArr.length > 0 ? (wArr.length > 1 ? wArr[lIdx] : wArr[0]) : 1;
+  ctx.L = matData.L[lIdx];
+  const PI = Math.PI;
+  const np = {log:Math.log, log10:Math.log10, abs:Math.abs, sqrt:Math.sqrt, exp:Math.exp};
+  const keys = Object.keys(ctx);
+  const result = new Float64Array(nVGS);
+  for (let i = 0; i < nVGS; i++) {
+    const lv = {}; for (const k of keys) lv[k] = ctx[k] instanceof Float64Array ? ctx[k][i] : ctx[k];
+    lv.np = np; lv.PI = PI;
+    try { result[i] = new Function(...Object.keys(lv), 'return ' + expr + ';')(...Object.values(lv)); }
+    catch { return null; }
+  }
+  return Array.from(result);
+}
+
+// ═══════════════════════════════════════════════════════════
+// RENDER
+// ═══════════════════════════════════════════════════════════
+const timers = {};
+function scheduleRender(i) { clearTimeout(timers[i]); timers[i] = setTimeout(() => renderPanel(i), 60); }
+function renderAllPanels() { for (let i = 0; i < 4; i++) scheduleRender(i); }
+
+function renderPanel(idx) {
+  if (!matData) return;
+  const xExpr  = document.getElementById('xExpr'+idx).value.trim();
+  const y1Expr = document.getElementById('y1Expr'+idx).value.trim();
+  const y2Expr = document.getElementById('y2Expr'+idx).value.trim();
+  if (!xExpr || !y1Expr) return;
+
+  const vdsIdx = parseInt(document.getElementById('vdsSlider').value);
+  const vsbIdx = parseInt(document.getElementById('vsbSelect').value);
+  const logX   = document.getElementById('logX'+idx).checked;
+  const logY   = document.getElementById('logY'+idx).checked;
+  const lIs    = [...selectedL].sort((a,b) => a-b);
+
+  const traces = []; let err = false;
+  const useY2 = (y2Expr && y2Expr.length > 0);
+  
+  for (let ci = 0; ci < lIs.length; ci++) {
+    const li = lIs[ci];
+    const l  = matData.L[li];
+    const lbl = l < 1 ? (l*1e3).toFixed(0)+'nm' : l.toFixed(2)+'µm';
+    const color = COLORS[ci % COLORS.length];
+
+    const xV  = evalExpr(xExpr,  li, vdsIdx, vsbIdx);
+    const y1V = evalExpr(y1Expr, li, vdsIdx, vsbIdx);
+    if (!xV || !y1V) { err = true; continue; }
+    const xs1=[],ys1=[];
+    for (let i=0;i<xV.length;i++) {
+      if (isFinite(xV[i])&&isFinite(y1V[i])&&(!logX||xV[i]>0)&&(!logY||y1V[i]>0)) { xs1.push(xV[i]); ys1.push(y1V[i]); }
+    }
+    traces.push({x:xs1,y:ys1,type:'scatter',mode:'lines',name:lbl,legendgroup:lbl,
+      line:{color,width:1.5},hovertemplate:'L='+lbl+'<br>X: %{x:.4g}<br>Y₁: %{y:.4g}<extra></extra>'});
+
+    if (useY2) {
+      const y2V = evalExpr(y2Expr, li, vdsIdx, vsbIdx);
+      if (y2V) {
+        const xs2=[],ys2=[];
+        for (let i=0;i<xV.length;i++) {
+          if (isFinite(xV[i])&&isFinite(y2V[i])&&(!logX||xV[i]>0)&&(!logY||y2V[i]>0)) { xs2.push(xV[i]); ys2.push(y2V[i]); }
+        }
+        traces.push({x:xs2,y:ys2,type:'scatter',mode:'lines',name:lbl+' (Y₂)',legendgroup:lbl,showlegend:false,
+          line:{color,width:1.5,dash:'dash'},yaxis:'y2',
+          hovertemplate:'L='+lbl+'<br>X: %{x:.4g}<br>Y₂: %{y:.4g}<extra></extra>'});
+      }
+    }
+  }
+
+  const xErr = document.getElementById('xExpr'+idx);
+  const yErr = document.getElementById('y1Expr'+idx);
+  if (xErr) xErr.classList.toggle('has-error', err);
+  if (yErr) yErr.classList.toggle('has-error', err);
+
+  const vds = matData.VDS[vdsIdx].toFixed(3);
+  const vsb = matData.VSB[vsbIdx].toFixed(2);
+  const y2lbl = useY2 ? '  ─ ' + y2Expr : '';
+
+  let layout = {
+    paper_bgcolor:'transparent', plot_bgcolor:'#0c0e14',
+    font:{family:'JetBrains Mono,monospace',color:'#64748b',size:10},
+    xaxis:{title:{text:xExpr,font:{color:'#94a3b8',size:10},standoff:4},type:logX?'log':'linear',gridcolor:'#161b27',linecolor:'#1f2430',zerolinecolor:'#1f2430',tickfont:{size:9}},
+    yaxis:{title:{text:y1Expr+y2lbl,font:{color:'#94a3b8',size:10},standoff:4},type:logY?'log':'linear',gridcolor:'#161b27',linecolor:'#1f2430',zerolinecolor:'#1f2430',tickfont:{size:9}},
+    legend:{bgcolor:'rgba(17,19,24,.88)',bordercolor:'#1f2430',borderwidth:1,font:{size:9},x:1,xanchor:'right',y:1,yanchor:'top'},
+    margin:{l:54,r:8,t:24,b:44},
+    title:{text:'<span style="font-size:9px;color:#334155">VDS='+vds+'V  VSB='+vsb+'V</span>',x:0.01,xanchor:'left',y:0.995,yanchor:'top'},
+    hovermode:'closest'
+  };
+
+  if (useY2) {
+    layout.yaxis2 = {
+      title: {text: y2Expr, font:{color:'#f59e0b',size:10}},
+      overlaying: 'y',
+      side: 'right',
+      type: logY ? 'log' : 'linear',
+      gridcolor: 'transparent',
+      linecolor: '#f59e0b',
+      tickfont: {size:9, color:'#f59e0b'}
+    };
+    layout.margin.r = 54;
+  }
+
+  const cfg = {responsive:true,displayModeBar:true,displaylogo:false,
+    modeBarButtonsToRemove:['select2d','lasso2d'],
+    toImageButtonOptions:{format:'svg',filename:'panel_'+(idx+1)}};
+
+  const el = document.getElementById('plot'+idx);
+  if (el._plotted) { Plotly.react(el, traces, layout, cfg); }
+  else { Plotly.newPlot(el, traces, layout, cfg); el._plotted=true; attachCursor(idx); }
+  el._traces = traces;
+  el._logX = logX; el._logY = logY;
+}
+
+// ═══════════════════════════════════════════════════════════
+// CURSOR
+// ═══════════════════════════════════════════════════════════
+function toggleCursor() {
+  cursorEnabled = !cursorEnabled;
+  const btn = document.getElementById('cursorBtn');
+  btn.textContent = cursorEnabled ? '⊕ Curseur ON' : '⊕ Curseur OFF';
+  btn.classList.toggle('active', cursorEnabled);
+  if (!cursorEnabled) hideAllCursors();
+}
+
+function attachCursor(idx) {
+  const el = document.getElementById('plot'+idx);
+  if (!el) return;
+  el.on('plotly_unhover', () => hideAllCursors());
+  const wrap = document.getElementById('plotWrap'+idx);
+  if (!wrap) return;
+  wrap.addEventListener('mousemove', e => {
+    if (!cursorEnabled || !el._plotted || !el._traces || !el._traces.length) return;
+    const xVal = pixelToDataX(idx, e);
+    const yMouseVal = pixelToDataY(idx, e);
+    if (xVal === null) return;
+    cursorX = xVal;
+    cursorLerp = computeLerp(idx, xVal, yMouseVal);
+    updateAllCursors();
+  });
+  wrap.addEventListener('mouseleave', () => hideAllCursors());
+}
+
+function computeLerp(idx, xVal, mouseYVal) {
+  if (mouseYVal === null) return null;
+  const el = document.getElementById('plot'+idx);
+  if (!el._traces) return null;
+  const logY = el._logY || false;
+  const toU  = v => logY ? Math.log10(v) : v;
+  const pts = [];
+  for (const tr of el._traces) { if (tr.yaxis === "y2") continue;
+    if (tr.line && tr.line.dash) continue;
+    const yVal = lerpY(tr.x, tr.y, xVal);
+    if (yVal === null || !isFinite(yVal) || (logY && yVal <= 0)) continue;
+    const lVal = parseLname(tr.name);
+    if (lVal === null) continue;
+    pts.push({lVal, yVal, color:tr.line.color, name:tr.name});
+  }
+  if (pts.length < 2) return null;
+  const uMouse = toU(mouseYVal);
+  pts.sort((a,b) => toU(a.yVal) - toU(b.yVal));
+  for (let i=0; i<pts.length-1; i++) {
+    const uLo = toU(pts[i].yVal), uHi = toU(pts[i+1].yVal);
+    if (uMouse >= uLo && uMouse <= uHi) {
+      const t = (uHi===uLo) ? 0 : (uMouse-uLo)/(uHi-uLo);
+      return {t, nameLo:pts[i].name, nameHi:pts[i+1].name,
+              lLo:pts[i].lVal, lHi:pts[i+1].lVal, allPts:pts};
+    }
+  }
+  return null;
+}
+
+function updateAllCursors() { for (let i=0;i<4;i++) updateCursor(i); }
+
+function hideAllCursors() {
+  for (let i=0;i<4;i++) {
+    const l=document.getElementById('cursorLine'+i); if (l) l.setAttribute('visibility','hidden');
+    const d=document.getElementById('cursorDots'+i); if (d) d.innerHTML='';
+    const t=document.getElementById('cursorTip'+i);  if (t) t.style.display='none';
+  }
+}
+
+function updateCursor(idx) {
+  const xVal=cursorX, lerp=cursorLerp;
+  const el=document.getElementById('plot'+idx);
+  if (!el||!el._plotted||!el._traces) return;
+  const line=document.getElementById('cursorLine'+idx);
+  const dotsG=document.getElementById('cursorDots'+idx);
+  const tip=document.getElementById('cursorTip'+idx);
+  const bounds=getPlotBounds(idx);
+  if (!bounds) return;
+  const px=dataXtoPixel(idx,xVal);
+  if (px===null||px<bounds.x||px>bounds.x+bounds.w) {
+    if(line) line.setAttribute('visibility','hidden');
+    if(dotsG) dotsG.innerHTML='';
+    if(tip) tip.style.display='none';
+    return;
+  }
+  if(line) {
+    line.setAttribute('x1',px); line.setAttribute('x2',px);
+    line.setAttribute('y1',bounds.y); line.setAttribute('y2',bounds.y+bounds.h);
+    line.setAttribute('visibility','visible');
+  }
+  if(dotsG) dotsG.innerHTML='';
+
+  const byName={};
+  for (const tr of el._traces) { if (tr.yaxis === "y2") continue;
+    if (tr.line && tr.line.dash) continue;
+    const yVal=lerpY(tr.x,tr.y,xVal);
+    if (yVal===null||!isFinite(yVal)) continue;
+    const py=dataYtoPixel(idx,yVal);
+    if(py===null) continue;
+    byName[tr.name]={tr,yVal,py,color:tr.line.color,lVal:parseLname(tr.name)};
+  }
+  for (const {py,color} of Object.values(byName)) {
+    if (py===null) continue;
+    const c=document.createElementNS('http://www.w3.org/2000/svg','circle');
+    c.setAttribute('cx',px); c.setAttribute('cy',py); c.setAttribute('r',4);
+    c.setAttribute('fill',color); c.setAttribute('fill-opacity','0.2');
+    c.setAttribute('stroke',color); c.setAttribute('stroke-width','1.5');
+    dotsG.appendChild(c);
+  }
+
+  let yInterp=null, lInterp=null, loEntry=null, hiEntry=null;
+  if (lerp!==null) {
+    lInterp = lerp.lLo + lerp.t*(lerp.lHi-lerp.lLo);
+    loEntry = byName[lerp.nameLo];
+    hiEntry = byName[lerp.nameHi];
+    const logY = el._logY||false;
+    const toU  = v => logY ? Math.log10(v) : v;
+    const fromU = u => logY ? Math.pow(10,u) : u;
+    const knots=[];
+    for (const pt of (lerp.allPts||[])) {
+      const entry=byName[pt.name];
+      if (entry&&isFinite(entry.yVal)&&(!logY||entry.yVal>0)) knots.push({l:pt.lVal,u:toU(entry.yVal)});
+    }
+    if (knots.length>=2) {
+      knots.sort((a,b)=>a.l-b.l);
+      const lt=lInterp;
+      let uInterp=null;
+      if (knots.length===2) {
+        const tL=(knots[1].l===knots[0].l)?0:(lt-knots[0].l)/(knots[1].l-knots[0].l);
+        uInterp=knots[0].u+tL*(knots[1].u-knots[0].u);
+      } else {
+        if (lt<=knots[0].l) uInterp=knots[0].u;
+        else if (lt>=knots[knots.length-1].l) uInterp=knots[knots.length-1].u;
+        else for (let ki=0;ki<knots.length-1;ki++) {
+          if (lt>=knots[ki].l&&lt<=knots[ki+1].l) {
+            const tL=(lt-knots[ki].l)/(knots[ki+1].l-knots[ki].l);
+            const p0=ki>0?knots[ki-1].u:knots[ki].u;
+            const p1=knots[ki].u, p2=knots[ki+1].u;
+            const p3=ki+2<knots.length?knots[ki+2].u:knots[ki+1].u;
+            uInterp=0.5*((2*p1)+(-p0+p2)*tL+(2*p0-5*p1+4*p2-p3)*tL*tL+(-p0+3*p1-3*p2+p3)*tL*tL*tL);
+            break;
+          }
+        }
+      }
+      if (uInterp!==null&&isFinite(uInterp)) yInterp=fromU(uInterp);
+    }
+  }
+
+  if (yInterp!==null && dotsG) {
+    const pyI=dataYtoPixel(idx,yInterp);
+    if (pyI!==null&&pyI>=bounds.y&&pyI<=bounds.y+bounds.h) {
+      const hl=document.createElementNS('http://www.w3.org/2000/svg','line');
+      hl.setAttribute('x1',bounds.x); hl.setAttribute('x2',bounds.x+bounds.w);
+      hl.setAttribute('y1',pyI); hl.setAttribute('y2',pyI);
+      hl.setAttribute('stroke','rgba(255,255,255,.18)'); hl.setAttribute('stroke-width','1');
+      hl.setAttribute('stroke-dasharray','4 3');
+      dotsG.appendChild(hl);
+      const s=6;
+      const dia=document.createElementNS('http://www.w3.org/2000/svg','polygon');
+      dia.setAttribute('points', px+','+(pyI-s)+' '+(px+s)+','+pyI+' '+px+','+(pyI+s)+' '+(px-s)+','+pyI);
+      dia.setAttribute('fill','white'); dia.setAttribute('fill-opacity','0.92');
+      dotsG.appendChild(dia);
+    }
+  }
+
+  if(tip) {
+    const lStr = lInterp!==null ? (lInterp<1?(lInterp*1000).toFixed(1)+' nm':lInterp.toFixed(3)+' µm') : null;
+    let tipHtml='<div class="cursor-x-label">X = '+fmtVal(xVal)+'</div>';
+    if (lStr&&yInterp!==null) {
+      tipHtml+='<div style="margin:4px 0 5px;padding:4px 7px;background:rgba(0,212,255,.12);border:1px solid rgba(0,212,255,.3);border-radius:4px;font-size:10px;line-height:1.6">'
+        +'<span style="color:#00d4ff;font-weight:600">⇆ L ≈ '+lStr+'</span>'
+        +'<span style="color:#64748b;margin-left:8px">Y = '+fmtVal(yInterp)+'</span></div>';
+    }
+    if (showDataList) {
+      for (const {tr,yVal,color} of Object.values(byName)) {
+        const mark=(loEntry&&tr===loEntry.tr)||(hiEntry&&tr===hiEntry.tr)?' ◆':'';
+        tipHtml+='<div class="cursor-row"><div class="cursor-swatch" style="background:'+color+'"></div>'
+          +'<span style="color:'+color+';min-width:48px">'+tr.name+mark+'</span>'
+          +'<span style="color:#94a3b8">'+fmtVal(yVal)+'</span></div>';
+      }
+    }
+    tip.innerHTML=tipHtml; tip.style.display='block';
+    const wrap=document.getElementById('plotWrap'+idx);
+    if(wrap) {
+      const wW=wrap.offsetWidth, tipW=210, mg=12;
+      let tl=px+mg; if (tl+tipW>wW) tl=px-tipW-mg;
+      tip.style.left=tl+'px'; tip.style.top=(bounds.y+8)+'px';
+    }
+  }
+}
+
+// Pixel ↔ data conversions
+function pixelToDataX(idx, e) {
+  const el=document.getElementById('plot'+idx);
+  if (!el._fullLayout) return null;
+  try {
+    const xa=el._fullLayout.xaxis;
+    const rect=el.getBoundingClientRect();
+    const px=e.clientX-rect.left;
+    const l=xa._offset; if (px<l||px>l+xa._length) return null;
+    const frac=(px-l)/xa._length;
+    return el._logX ? Math.pow(10,xa.range[0]+frac*(xa.range[1]-xa.range[0]))
+                    : xa.range[0]+frac*(xa.range[1]-xa.range[0]);
+  } catch { return null; }
+}
+function pixelToDataY(idx, e) {
+  const el=document.getElementById('plot'+idx);
+  if (!el._fullLayout) return null;
+  try {
+    const ya=el._fullLayout.yaxis;
+    const rect=el.getBoundingClientRect();
+    const py=e.clientY-rect.top;
+    const t=ya._offset; if (py<t||py>t+ya._length) return null;
+    const frac=1-(py-t)/ya._length;
+    return el._logY ? Math.pow(10,ya.range[0]+frac*(ya.range[1]-ya.range[0]))
+                    : ya.range[0]+frac*(ya.range[1]-ya.range[0]);
+  } catch { return null; }
+}
+function dataXtoPixel(idx, xVal) {
+  const el=document.getElementById('plot'+idx);
+  if (!el._fullLayout) return null;
+  try {
+    const xa=el._fullLayout.xaxis;
+    const frac=el._logX ? (Math.log10(xVal)-xa.range[0])/(xa.range[1]-xa.range[0])
+                        : (xVal-xa.range[0])/(xa.range[1]-xa.range[0]);
+    return xa._offset+frac*xa._length;
+  } catch { return null; }
+}
+function dataYtoPixel(idx, yVal) {
+  const el=document.getElementById('plot'+idx);
+  if (!el._fullLayout) return null;
+  try {
+    const ya=el._fullLayout.yaxis;
+    const frac=el._logY ? (Math.log10(yVal)-ya.range[0])/(ya.range[1]-ya.range[0])
+                        : (yVal-ya.range[0])/(ya.range[1]-ya.range[0]);
+    return ya._offset+(1-frac)*ya._length;
+  } catch { return null; }
+}
+function getPlotBounds(idx) {
+  const el=document.getElementById('plot'+idx);
+  if (!el._fullLayout) return null;
+  try {
+    const xa=el._fullLayout.xaxis, ya=el._fullLayout.yaxis;
+    return {x:xa._offset,y:ya._offset,w:xa._length,h:ya._length};
+  } catch { return null; }
+}
+
+function lerpY(xs, ys, xTarget) {
+  if (!xs||xs.length<2) return null;
+  for (let i=0;i<xs.length-1;i++) {
+    const x0=xs[i],x1=xs[i+1];
+    if ((x0<=xTarget&&xTarget<=x1)||(x1<=xTarget&&xTarget<=x0)) {
+      const t=(x1===x0)?0:(xTarget-x0)/(x1-x0);
+      return ys[i]+t*(ys[i+1]-ys[i]);
+    }
+  }
+  return null;
+}
+
+function parseLname(name) {
+  const nm=name.match(/^([\d.]+)\s*nm$/);   if (nm) return parseFloat(nm[1])/1000;
+  const um=name.match(/^([\d.]+)\s*µm$/); if (um) return parseFloat(um[1]);
+  return null;
+}
+
+function fmtVal(v) {
+  if (!isFinite(v)) return '—';
+  const a=Math.abs(v);
+  if (a===0) return '0';
+  if (a>=1e9)  return (v/1e9).toPrecision(4)+'G';
+  if (a>=1e6)  return (v/1e6).toPrecision(4)+'M';
+  if (a>=1e3)  return (v/1e3).toPrecision(4)+'k';
+  if (a>=1)    return v.toPrecision(4);
+  if (a>=1e-3) return (v*1e3).toPrecision(4)+'m';
+  if (a>=1e-6) return (v*1e6).toPrecision(4)+'µ';
+  if (a>=1e-9) return (v*1e9).toPrecision(4)+'n';
+  if (a>=1e-12)return (v*1e12).toPrecision(4)+'p';
+  return v.toExponential(3);
+}
+
+// ═══════════════════════════════════════════════════════════
+// BOOT
+// ═══════════════════════════════════════════════════════════
+initPyodide();
+
+// Ajout pour masquer/afficher la liste des courbes dans l'infobulle
+function toggleDataList() {
+    showDataList = !showDataList;
+    const btn = document.getElementById('toggleDataListBtn');
+    btn.textContent = showDataList ? '📋 Liste ON' : '📋 Liste OFF';
+    if (typeof updateAllCursors === 'function') {
+        updateAllCursors();
+    }
+}
+
+</script>
+</body>
+</html>
