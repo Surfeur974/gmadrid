@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
+import inspect, re
 
 def coolPlot(xvar, yvar, xname, yname, title):
     fig, ax1 = plt.subplots(figsize=(6, 4))
@@ -217,3 +218,16 @@ def ota_5T_L_gmid(nmoslk,pmoslk, spec, param):
     #print('AV0 = %.2F dB' % (20*np.log10(AV0)))
     #print('VS = %.2F V ' % vs)
     return mos, perf
+
+def cool_print(*vars):
+    frame = inspect.currentframe().f_back
+    call_line = inspect.getframeinfo(frame).code_context[0].strip()
+    
+    match = re.search(r'cool_print\((.+)\)', call_line)
+    if match:
+        var_names = [v.strip() for v in match.group(1).split(',')]
+    else:
+        var_names = ["?"] * len(vars)
+    
+    for name, val in zip(var_names, vars):
+        print(f"{name} = {val!r}")
