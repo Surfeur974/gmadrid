@@ -231,3 +231,22 @@ def cool_print(*vars):
     
     for name, val in zip(var_names, vars):
         print(f"{name} = {val!r}")
+def get_all_mos(moslk, GM_ID, L, GM=None, VDS=None, VSB=None, ID=None):
+    mos = {}
+    if VSB is None:
+        VSB = 0
+    if VDS is None:
+        VDS = moslk['VDS'][-1]/2
+    if ID is None:
+        ID = GM / GM_ID
+    if GM is None:
+        GM = GM_ID * ID
+    
+    mos['ID'] = ID
+    mos['GM_ID'] = GM_ID
+    mos['ID_W'] = moslk.look_up('ID_W', GM_ID=GM_ID, L=L, VDS=VDS, VSB=VSB)
+    mos['GDS_ID'] = moslk.look_up('GDS_ID', GM_ID=GM_ID, L=L, VDS=VDS, VSB=VSB)
+    mos['W'] = ID / mos['ID_W']
+    mos['L'] = L
+    return mos
+    
