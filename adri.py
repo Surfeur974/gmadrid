@@ -2,6 +2,7 @@ import numpy as np
 from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 import inspect, re
+from IPython.display import display, HTML
 
 def coolPlot(xvar, yvar, xname, yname, title):
     fig, ax1 = plt.subplots(figsize=(6, 4))
@@ -232,6 +233,7 @@ def cool_print(*vars):
     for name, val in zip(var_names, vars):
         print(f"{name} = {val!r}")
 def get_all_mos(moslk, GM_ID, L, GM=None, VDS=None, VSB=None, ID=None):
+
     mos = {}
     if VSB is None:
         VSB = 0
@@ -249,4 +251,176 @@ def get_all_mos(moslk, GM_ID, L, GM=None, VDS=None, VSB=None, ID=None):
     mos['W'] = ID / mos['ID_W']
     mos['L'] = L
     return mos
+def print_design_summary(*args):
+    BG, FG, COL_KEY, COL_NUM = "#062c50", "#cf7e48", "120px", "85px"
+
+    def fmt(val):
+        if not isinstance(val, (int, float, np.floating)):
+            return str(val), ""
+        a = abs(val)
+        for threshold, divisor, suffix in [
+            (1e9, 1e9, "G"), (1e6, 1e6, "M"), (1, 1, ""), (1e-3, 1e-3, "m"),
+            (1e-6, 1e-6, "u"), (1e-9, 1e-9, "n"), (1e-12, 1e-12, "p"), (1e-15, 1e-15, "f"),
+        ]:
+            if a >= threshold:
+                return f"{val/divisor:.4g}", suffix
+        return f"{val:.4e}", ""
+
+    def make_table(title, blk):
+        SEP, total = f"border-top:1px solid {FG}", int(COL_KEY[:-2]) + int(COL_NUM[:-2])
+        header = (f"<tr><td colspan='2' style='width:{total}px; padding:8px 0 3px; font-size:25px; "
+                  f"letter-spacing:.1em; opacity:.5; text-transform:uppercase; font-weight:bold; {SEP}'>{title}</td></tr>")
+        footer = f"<tr><td colspan='2' style='{SEP}; padding-top:2px'></td></tr>"
+        rows = "".join(
+            f"<tr>"
+            f"<td style='width:{COL_KEY}; padding:1px 4px 1px 0; opacity:.6; white-space:nowrap; overflow:hidden'>{k}</td>"
+            f"<td style='width:{COL_NUM}; padding:1px 0; text-align:right; font-variant-numeric:tabular-nums; font-weight:500; white-space:nowrap'>"
+            f"{num}{'&thinsp;' + unit if unit else '&thinsp;&nbsp;'}</td>"
+            f"</tr>"
+            for k, v in blk.items()
+            for num, unit in [fmt(np.asarray(v).flat[0] if not np.isscalar(v) else v)]
+        )
+        return (f"<table style='font-family:monospace; font-size:18px; border-collapse:collapse; "
+                f"color:{FG}; background:{BG}; table-layout:fixed; width:{total}px'>{header}{rows}{footer}</table>")
+
+    frame = inspect.currentframe().f_back
+    src = inspect.getframeinfo(frame).code_context[0].strip()
+    m = re.search(r'print_design_summary\((.*)\)', src)
+    names = [a.strip() for a in m.group(1).split(',')] if m else [f"Block {i}" for i in range(len(args))]
+
+    chunks = [list(zip(names, args))[i:i+4] for i in range(0, len(args), 4)]
+    tr_html = "".join(
+        f"<tr>{''.join(f'<td style=vertical-align:top;padding-right:16px>{make_table(n,b)}</td>' for n,b in chunk)}</tr>"
+        for chunk in chunks
+    )
+    display(HTML(f"<table style='border-collapse:collapse; background:{BG}'>{tr_html}</table>"))
+
+def folded_cascode(nmoslk, pmoslk, s, d): ##Version Matriced
+    """
+    Size a folded-cascode amplifier using the gm/ID methodology.
+
+    Sweeps β and gm/ID simultaneously to find the design points that meet
+    the noise and speed specifications, then computes the self-loading
+    capacitance at each point.
+
+    nmoslk / pmoslk are gm/ID lookup tables for the NMOS and PMOS devices.
+
+    s must contain:
+        fu1       — unity-gain frequency (Hz)
+        vod_noise — output-referred noise voltage (V)
+        FO        — fan-out
+        G         — closed-loop gain
+        vod_final — voltage ouput step max
+        ed — erreur settling %
+        VDD
+        VCM
+        V_SWING_P2P_DIFF
+
+    d must contain:
+        gm_ID1   — gm/ID sweep vector for the input transistor (S/A)
+        beta     — feedback factor sweep vector
+        L1       — input transistor length (µm)
+        Lcas     — cascode length (µm)
+        gm_IDcas — cascode gm/ID operating point (S/A)
+        gamma    — excess noise coefficient
+        cself    — self-loading estimate, set to 0 on first pass (F)
+
+    Returns m1 (ID, gm_ID) and p (cltot, cself) at each matched design point.
+    """
+    VDD = s['VDD']
+    VCM = s['VCM']
+    V_SWING_P2P_DIFF = s['V_SWING_P2P_DIFF']
+    VOUT_CM_HIGH = VCM+V_SWING_P2P_DIFF/2
+    VOUT_CM_LOW = VCM-V_SWING_P2P_DIFF/2
+    VDS_MOS = VOUT_CM_LOW/2
+    beta_max = 1 / (1 + s['G'])
+    kB = 1.3806488e-23
+    temp = 300
+    # ── Device lookups over the gm/ID sweep vector ────────────────────────────
+    gm_gds1  = pmoslk.look_up('GM_GDS',  GM_ID=d['gm_ID1'],   L=d['L1'])
+    wt1      = pmoslk.look_up('GM_CGG',  GM_ID=d['gm_ID1'],   L=d['L1'])
+    cgd_cgg1 = pmoslk.look_up('CGD_CGG', GM_ID=d['gm_ID1'],   L=d['L1'])
+    gm_gds2  = nmoslk.look_up('GM_GDS',  GM_ID=d['gm_IDcas'], L=d['Lcas'])
+    cdd_gm3  = nmoslk.look_up('CDD_GM',  GM_ID=d['gm_IDcas'], L=d['Lcas'])
+    cdd_gm4  = pmoslk.look_up('CDD_GM',  GM_ID=d['gm_IDcas'], L=d['Lcas'])
+
+    # ── Step 2 : sweep β — broadcast to 2D (N_beta, N_gm_ID1) ────────────────
+    beta   = d['beta'][:, None]    # (N, 1)
+    gm_ID1 = d['gm_ID1'][None, :] # (1, M)
+
+    # Step 3a. Excess noise factor α (eq. 6.54)
+    alpha = 2 * d['gamma'] * (1 + 3 * d['gm_IDcas'] / gm_ID1)
+
+    # Step 3b. C_Ltot from noise spec (eq. 6.53) — also fixes C_S, C_F, C_L
+    cltot = alpha / beta * kB * temp / s['vod_noise']**2
+    CF    = (cltot - d['cself']) / (s['FO'] * s['G'] + 1 - beta)
+    CS    = s['G'] * CF
+    CL   = s['FO'] * CS
+
+    # Step 3c. Current division factor κ (eq. 6.43)
+    kappa = 1 / (1 + gm_ID1 / (gm_gds1 * d['gm_IDcas']) + 2 / gm_gds2)
+
+    #Slewing compute X, then more accurate wu1 
+    X = s['vod_final'] * beta / 2 * gm_ID1
+    wu1 = 1 / s['ts']*(X - 1 + np.log(1/(s['ed']*X)))
+
+    # Step 3d. g_m1 from settling formula above 
+    #gm1 = 2 * np.pi * s['fu1'] * cltot / beta / kappa
+    gm1 = wu1 * cltot / beta / kappa
+
+    # Step 3e. I_D1 and f_Ti from the gm/ID vector
+    ID1 = gm1 / gm_ID1
+
+    # Step 3f. C_gg1 from g_m and f_Ti → compute C_gd1 and C_in (eq. 6.47)
+    cgs1 = gm1 / wt1
+    cin  = cgs1 * (1 + cgd_cgg1 * gm_ID1 / d['gm_IDcas'])
+
+    # Step 3g. Actual β values along the gm/ID vector (eq. 6.46)
+    beta_actual = CF / (CF + CS + cin)
+
+    # ── Step 4 : find closest match between β_actual and β_k ─────────────────
+    idx = np.argmin(np.abs(beta_actual - beta), axis=1)  # (N,)
+    j   = np.arange(len(d['beta']))
     
+
+
+    m1_gm1 = gm1[j, idx]
+    m1_gm_id1 = d['gm_ID1'][idx]
+    ID1 = gm1[j, idx] / d['gm_ID1'][idx]
+    
+    #Fill output with MOS charac
+    m1 = get_all_mos(pmoslk, GM_ID=m1_gm_id1,L=d['L1'], GM=m1_gm1, ID=ID1)
+    m2 = get_all_mos(nmoslk, GM_ID=d['gm_IDcas'], L=d['Lcas'], ID=2*ID1, VDS=VDS_MOS)
+    m3 = get_all_mos(nmoslk, GM_ID=d['gm_IDcas'], L=d['Lcas'], ID=ID1, VDS=VDS_MOS)
+    m4 = get_all_mos(pmoslk, GM_ID=d['gm_IDcas'], L=d['Lcas'], ID=ID1, VDS=VDS_MOS)
+    m5 = get_all_mos(pmoslk, GM_ID=d['gm_IDcas'], L=d['Lcas'], ID=ID1, VDS=VDS_MOS)
+
+    #######Calc GAIN
+    gds5    = pmoslk.look_up( 'GDS_ID', GM_ID=d['gm_IDcas'], L=d['Lcas'], VDS=VDS_MOS) * ID1
+    gds4    = pmoslk.look_up( 'GDS_ID', GM_ID=d['gm_IDcas'], L=d['Lcas'], VDS=VCM-VDS_MOS, VSB = VDS_MOS) * ID1
+    gm4     = pmoslk.look_up( 'GM_ID', GM_ID=d['gm_IDcas'], L=d['Lcas'], VDS=VCM-VDS_MOS, VSB = VDS_MOS) * ID1
+    gds3    = nmoslk.look_up( 'GDS_ID', GM_ID=d['gm_IDcas'], L=d['Lcas'], VDS=VCM-VDS_MOS, VSB = VDS_MOS) * ID1
+    gm3     = nmoslk.look_up( 'GM_ID', GM_ID=d['gm_IDcas'], L=d['Lcas'], VDS=VCM-VDS_MOS) * ID1
+    gds2    = nmoslk.look_up( 'GDS_ID', GM_ID=d['gm_IDcas'], L=d['Lcas'], VDS=VDS_MOS) * 2 * ID1
+    gds1    = pmoslk.look_up( 'GDS_ID', GM_ID=m1_gm_id1, L=d['L1']) * 2 * ID1
+    gds_gm1    = pmoslk.look_up( 'GDS_GM', GM_ID=m1_gm_id1, L=d['L1'])
+    gm_gds2    = pmoslk.look_up( 'GM_GDS', GM_ID=d['gm_IDcas'], L=d['Lcas'], VDS=VDS_MOS)
+    gm1 = m1_gm_id1 * ID1
+
+    rout = 1 / ( gds4 / (1+gm4/gds5) + gds3 / (1 + gm3 / (gds1+gds2) ))
+    kappa = 1 / ( 1 + gds1 / gm3 + 2 / gm_gds2)
+    L0 = 20*np.log10(beta * kappa * gm1 * rout)
+
+    p = {
+        'cltot': cltot[j, idx],
+        'cself': m1['ID'] * d['gm_IDcas'] * (cdd_gm3 + cdd_gm4),
+        #'beta' : beta,
+        'L0' : L0,
+        'CF' : CF,
+        'CS' : CS,
+        'CL' : CL,
+        'fu1' : wu1 * 1/(2*np.pi),
+        'beta_betamax' : beta_actual / d['beta'],
+        'FP2 / FU1' : d['fp2'] / (wu1 * 1/(2*np.pi))
+    }
+    return m1,m2,m3,m4,m5,p
