@@ -50,6 +50,7 @@ def currentMirror(moslk, spec, param):
     vgs1 = moslk.lookupVGS(GM_ID=gm_id1, L=l_mos)
     vds1 = vgs1
     vgs1 = moslk.lookupVGS(GM_ID=gm_id1, VDS=vds1, L=l_mos)
+    vds1 = vgs1
     jd1  = moslk.lookup('ID_W', VGS=vgs1, VDS=vds1, L=l_mos)
     w1 = input_current / jd1
     rout = 1 / (w1 * moslk.look_up('GDS_W',VGS=vgs1, VDS=vds1, L=l_mos))
@@ -63,7 +64,7 @@ def currentMirror(moslk, spec, param):
 
     return mos, perf
 
-def currentMirrorCascode(moslk, spec, param):
+def currentMirrorCascode(moslk, spec, param, V_margin = 0.05):
         #Arg :  
         #spec. : input_current
         #param. : l_mos, gm_id1
@@ -87,7 +88,7 @@ def currentMirrorCascode(moslk, spec, param):
     l_mos = param['l_mos']
     input_current = spec['input_current']
 
-    vds1 = 2.0 / gm_id1 + 0.05
+    vds1 = 2.0 / gm_id1 + V_margin
 
     #Start compute MOS
     vgs1 = moslk.lookupVGS(GM_ID=gm_id1, VDS=vds1, L=l_mos)
@@ -126,7 +127,7 @@ def currentMirrorCascode(moslk, spec, param):
 
 
 
-    perf = {'Rout' : rout, 'vin_min' : vin_min, 'vout_min' : vout_min}
+    perf = {'Rout' : rout, 'vin_min' : vin_min, 'vout_min' : vout_min, 'V_margin' : V_margin}
     mos['MOS1'] = {'NAME' : "MOS1", 'W' : w1, 'L' : l_mos, 'VGS' : vgs1, 'VDS' : vds1, 'GM_ID' : gm_id1}
     mos['MOS2'] = {'NAME' : "MOS2", 'W' : w1, 'L' : l_mos, 'VGS' : vgs2, 'VDS' : vgs1-vds1, 'GM_ID' : gm2_id}
     mos['MOS3'] = {'NAME' : "MOS3", 'W' : w1, 'L' : l_mos, 'VGS' : vgs1, 'VDS' : vbias-vgs2, 'GM_ID' : gm3_id}
@@ -161,6 +162,7 @@ def ota_5T_L_gmid(nmoslk,pmoslk, spec, param):
     vic = spec['vic']
     #Get parameter from args
     l_mos = param['l_mos']
+    l_mos = param['l_mos']
     gm_id1 = param['gm_id1']
     gm_id2 = param['gm_id2']
     ####################################
@@ -171,20 +173,20 @@ def ota_5T_L_gmid(nmoslk,pmoslk, spec, param):
     ibias = gm1 / gm_id1
     #VGS from lookupVGS, L and GM_ID
     # Find VDS1 and 
-    vgs1 = nmoslk.lookupVGS(GM_ID=gm_id1, L=l_mos, VDS=0.6, VSB=0) #Fist estimation with vds default
-    vgs2 = pmoslk.lookupVGS(GM_ID=gm_id2, L=l_mos, VDS=0.6, VSB=0) #Fist estimation with vds default
-    vgs2 = pmoslk.lookupVGS(GM_ID=gm_id2, L=l_mos, VDS=vgs2, VSB=0) #Second with VDS = VGS (current mirror)
+    vgs1 = nmoslk.lookupVGS(GM_ID=gm_id1, L=l_mos) #Fist estimation with vds default
+    vgs2 = pmoslk.lookupVGS(GM_ID=gm_id2, L=l_mos) #Fist estimation with vds default
+    vgs2 = pmoslk.lookupVGS(GM_ID=gm_id2, L=l_mos, VDS=vgs2) #Second with VDS = VGS (current mirror)
     vd = vdd - vgs2
     vs = vic - vgs1
     vds1 = vd - vs
-    vgs1 = nmoslk.lookupVGS(GM_ID=gm_id2, L=l_mos, VDS=vds1, VSB=0) #Second with VDS more accurate
+    vgs1 = nmoslk.lookupVGS(GM_ID=gm_id2, L=l_mos, VDS=vds1) #Second with VDS more accurate
     vds2 = vgs2
 
     #Calcul Gain
-    gds_id1 = nmoslk.look_up('GDS_ID', GM_ID=gm_id1, VDS=vds1, L=l_mos, VSB=0)
-    gds_id2 = pmoslk.look_up('GDS_ID', GM_ID=gm_id2, VDS=vds2, L=l_mos, VSB=0)
+    gds_id1 = nmoslk.look_up('GDS_ID', GM_ID=gm_id1, VDS=vds1, L=l_mos)
+    gds_id2 = pmoslk.look_up('GDS_ID', GM_ID=gm_id2, VDS=vds2, L=l_mos)
     av0 = gm_id1 / (gds_id1 + gds_id2)
-
+    av0 = 20*np.log10(av0)
     #print('AV0 = %.2F' % AV0)
     #print('gm1 = %.2F uS' % (gm1 * 1e6))
     #print('ID = %.2F uA before self loading' % (ID*1e6))
@@ -195,16 +197,16 @@ def ota_5T_L_gmid(nmoslk,pmoslk, spec, param):
         gm1 = 2*3.14159*fu*(cload+cselfloading)
         ibias = gm1 / gm_id1
         #Denormalization
-        jd1 = nmoslk.lookup('ID_W', GM_ID=gm_id1, VDS=vds1, L=l_mos, VSB=0)
-        jd2 = pmoslk.lookup('ID_W', GM_ID=gm_id2, VDS=vds2, L=l_mos, VSB=0)
+        jd1 = nmoslk.lookup('ID_W', GM_ID=gm_id1, VDS=vds1, L=l_mos)
+        jd2 = pmoslk.lookup('ID_W', GM_ID=gm_id2, VDS=vds2, L=l_mos)
         w1 = ibias/jd1
         w2 = ibias/jd2
         #print('ID = %.2F uA' % (id* 1e6))
         #print('W1 = %.2F um' % (W1))
         #print('W2 = %.2F um' % (W2))
-        cdd1 = w1 * nmoslk.look_up('CDD_W', GM_ID=gm_id1, L=l_mos, VSB=0)
-        cdd2 = w2 * pmoslk.look_up('CDD_W', GM_ID=gm_id2, L=l_mos, VSB=0)
-        cgg1 = w1 * nmoslk.look_up('CGG_W', GM_ID=gm_id1, L=l_mos, VSB=0)
+        cdd1 = w1 * nmoslk.look_up('CDD_W', GM_ID=gm_id1, L=l_mos)
+        cdd2 = w2 * pmoslk.look_up('CDD_W', GM_ID=gm_id2, L=l_mos)
+        cgg1 = w1 * nmoslk.look_up('CGG_W', GM_ID=gm_id1, L=l_mos)
         cselfloading = cdd1 + cdd2 
         #+cgg1 if follower
     #print('ID = %.2F uA before self loading' % (ID*1e6))
@@ -213,12 +215,52 @@ def ota_5T_L_gmid(nmoslk,pmoslk, spec, param):
     ###################################
     ###################################
     ###################################
-    perf = {'AV0' : av0, 'ibias' : ibias, 'vs' : vs}
+    perf = {'AV0' : av0, 'ibias' : ibias, 'vs' : vs, 'cselfload' : cselfloading}
     mos['MOS1'] = {'NAME' : "MOS1", 'W' : w1, 'L' : l_mos, 'VGS' : vgs1, 'VDS' : vds1, 'GM_ID' : gm_id1}
     mos['MOS2'] = {'NAME' : "MOS2", 'W' : w2, 'L' : l_mos, 'VGS' : vgs2, 'VDS' : vds2, 'GM_ID' : gm_id2}
     #print('AV0 = %.2F dB' % (20*np.log10(AV0)))
     #print('VS = %.2F V ' % vs)
-    return mos, perf
+    m1 = get_all_mos(nmoslk, GM_ID=gm_id1,L=l_mos, GM=gm1, ID=ibias)
+    m2 = get_all_mos(pmoslk, GM_ID=gm_id2,L=l_mos, GM=gm_id2*ibias, ID=ibias)
+
+    return m1,m2, perf
+
+def get_L_GMID_ota_5T_for_AV0(nmoslk,pmoslk, gmid_test, L_test, AV_spec):
+
+    def interp1(x, y, value):
+        # Perform cubic interpolation using interp1d
+        f = interp1d(x, y, kind='cubic', fill_value=-1, bounds_error=False)
+        return f(value)
+    gdsID1 = nmoslk.lookup('GDS_ID', GM_ID=gmid_test, L=L_test)
+    gdsID2 = pmoslk.lookup('GDS_ID', GM_ID=gmid_test, L=L_test)
+
+    fT = nmoslk.lookup('GM_CGG', GM_ID=gmid_test, L=L_test) /(2*3.14159) * 1e-9
+    AV0 = gmid_test / (gdsID1 + gdsID2)
+    gmID1 = np.zeros(L_test.size)
+    ft1 = np.zeros(L_test.size)
+    for k in range(len(L_test)):
+        gmID1[k] = interp1(AV0[k], gmid_test, AV_spec)
+        ft1[k] = interp1(gmid_test, fT[k], gmID1[k])
+
+    #Get only valid data
+    valid_data = (gmID1 != -1)
+    gmID1 = gmID1[valid_data]
+    ft1 = ft1[valid_data]
+    L_test = L_test[valid_data]
+
+    plt.plot(L_test, gmID1,marker='o', markersize=5, markeredgewidth=2, linestyle='--', color='gray')
+    plt.xlabel('$L$ (um)')
+    plt.ylabel(r'$GM_{ID}/$')
+    plt.twinx()
+    plt.plot(L_test, ft1,marker='o', markersize=5, markeredgewidth=2, linestyle='--', color='red')
+    plt.ylabel(r'$f_T$ (GHz)')
+    plt.title(r'Points with AV0 = AV_spec, Only valid data are shown')
+    #plt.show()
+    L_for_FTMAX = L_test[np.argmax(ft1)]
+    gmID_for_FTMAX = gmID1[np.argmax(ft1)]
+    FT_MAX = max(ft1)
+
+    return L_for_FTMAX, gmID_for_FTMAX, FT_MAX
 
 def cool_print(*vars):
     frame = inspect.currentframe().f_back
@@ -564,3 +606,50 @@ def two_stage_sr_opti(nmos, pmos, s, d):
         p['L0'] = L0
 
     return m1, m2, m3, m4, p
+def constant_gm_bias(nmoslk,pmoslk, s, d):
+    #     #Design Spec 
+    # s = {
+    #     'VDD' : 2.7,
+    #     'ID' : 50e-6,
+    #     'VR' : 0.1,
+    # }
+    # d = {
+    #     'L12': 2
+    # }
+    L12 = d['L12']
+    VDD = s['VDD']
+    ID = s['ID']
+    VR = s['VR']
+
+    #Plot of AV0 and FT versus gm/id
+
+    VGS2 = np.linspace(VR*1.2, VDD*0.8, 50)
+
+    JD2 = np.diag(nmoslk.look_up('ID_W', VGS = VGS2, VDS=VGS2, L=L12))
+    JD1 = np.diag(nmoslk.look_up('ID_W', VGS = VGS2-VR, VDS=VGS2-VR, L=L12))
+    JD3 = np.diag(pmoslk.look_up('ID_W', VGS = VDD-VGS2, VDS=VDD-VGS2, L=L12))
+
+    gm_ID2 = np.diag(nmoslk.look_up('GM_ID',VGS = VGS2, VDS=VGS2, L=L12))
+    gm_ID1 = np.diag(nmoslk.look_up('GM_ID', VGS = VGS2-VR, VDS=VGS2-VR, L=L12))
+    gm_ID3 = np.diag(pmoslk.look_up('GM_ID', VGS = VDD-VGS2, VDS=VDD-VGS2, L=L12))
+
+    W2 = ID / JD2
+    W1 = ID / JD1
+    W3 = ID / JD3
+
+    wtot = W1+W2+W3
+    imin = np.argmin(wtot)
+    #Choose W2 with plot above 
+    w1 = W1[imin]
+    w2 = W2[imin]
+    w3 = W3[imin]
+    gm_ID1 = gm_ID1[imin]
+    gm_ID2 = gm_ID2[imin]
+    gm_ID3 = gm_ID3[imin]
+    
+
+    m1 = get_all_mos(nmoslk, GM_ID=gm_ID1,L=L12, GM=gm_ID1*ID, ID=ID)
+    m2 = get_all_mos(nmoslk, GM_ID=gm_ID2,L=L12, GM=gm_ID2*ID, ID=ID)
+    m3 = get_all_mos(pmoslk, GM_ID=gm_ID3,L=L12, GM=gm_ID3*ID, ID=ID)
+    
+    return m1,m2,m3
