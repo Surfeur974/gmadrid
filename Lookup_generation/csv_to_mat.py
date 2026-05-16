@@ -88,8 +88,9 @@ def convert_csv_to_mat(device, w, nfing, txt_path, infomos):
     cdd = reshape_param('cdd') + reshape_param('capbd') + reshape_param('cgdo')
     css = reshape_param('css') + reshape_param('capbs') + reshape_param('cgso')
 
-    sth = reshape_param('nid')**2
-    sfl = reshape_param('n1overf')**2
+    ####A verifier que c'est **2 ou pas
+    sth = reshape_param('nid')
+    sfl = reshape_param('n1overf')
 
     dic = {
     "INFO": infomos,
