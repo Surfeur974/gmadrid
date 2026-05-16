@@ -93,15 +93,15 @@ def currentMirrorCascode(moslk, spec, param, V_margin = 0.05):
     #Start compute MOS
     vgs1 = moslk.lookupVGS(GM_ID=gm_id1, VDS=vds1, L=l_mos)
     jd1  = moslk.lookup('ID_W', VGS=vgs1, VDS=vds1, L=l_mos)
-    jd2  = moslk.lookup('ID_W', VGS=vgs1+s, VDS=vgs1-vds1, L=l_mos, VSB=-vds1)
+    jd2  = moslk.lookup('ID_W', VGS=vgs1+s, VDS=vgs1-vds1, L=l_mos, VSB=vds1)
     vgs2 = interp1(jd2/jd1, vgs1+s, 1)
     vbias = vds1+vgs2
     w1 = input_current / jd1
 
     vea1 = moslk.look_up('ID_GDS', VGS=vgs1, VDS=vds1, L=l_mos,VSB=0)
-    gm4_id = moslk.look_up('GM_ID', VGS=vgs2, VDS=vgs1-vds1, VSB=-vds1, L=l_mos)
-    gmb4_id = moslk.look_up('GMB_ID', VGS=vgs2, VDS=vgs1-vds1, VSB=-vds1, L=l_mos)
-    gds4_id = moslk.look_up('GDS_ID', VGS=vgs2, VDS=vgs1-vds1, VSB=-vds1, L=l_mos)
+    gm4_id = moslk.look_up('GM_ID', VGS=vgs2, VDS=vgs1-vds1, VSB=vds1, L=l_mos)
+    gmb4_id = moslk.look_up('GMB_ID', VGS=vgs2, VDS=vgs1-vds1, VSB=vds1, L=l_mos)
+    gds4_id = moslk.look_up('GDS_ID', VGS=vgs2, VDS=vgs1-vds1, VSB=vds1, L=l_mos)
 
     A4 = (gm4_id+gmb4_id+gds4_id+1/vea1) / gds4_id
 
@@ -109,8 +109,8 @@ def currentMirrorCascode(moslk, spec, param, V_margin = 0.05):
     rout = VEA_cascode / input_current
 
     #Bias circuit
-    jd6 = moslk.look_up('ID_W', VGS=vgs2, VDS=vgs2, VSB=-vds1, L=l_mos)
-    gm6_id = moslk.look_up('GM_ID', VGS=vgs2, VDS=vgs2, VSB=-vds1, L=l_mos)
+    jd6 = moslk.look_up('ID_W', VGS=vgs2, VDS=vgs2, VSB=vds1, L=l_mos)
+    gm6_id = moslk.look_up('GM_ID', VGS=vgs2, VDS=vgs2, VSB=vds1, L=l_mos)
     id6 = w1 * jd6
     jd7 = moslk.look_up('ID_W', VGS=vbias, VDS = vds1, L=l_mos)
 
@@ -121,7 +121,7 @@ def currentMirrorCascode(moslk, spec, param, V_margin = 0.05):
     #vin_min = 2.0 * 2.0/gm_id1 + 0.6
     #vout_min = 2.0 * 2.0/gm_id1
 
-    gm2_id = moslk.look_up('GM_ID', VGS=vgs2, VDS=vgs1-vds1, VSB=-vds1, L=l_mos)
+    gm2_id = moslk.look_up('GM_ID', VGS=vgs2, VDS=vgs1-vds1, VSB=vds1, L=l_mos)
     gm3_id = moslk.look_up('GM_ID', VGS=vgs2, VDS=vbias-vgs2, VSB=0, L=l_mos)
     gm7_id = moslk.look_up('GM_ID', VGS=vbias, VDS = vds1, L=l_mos)
 
