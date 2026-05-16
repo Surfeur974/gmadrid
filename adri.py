@@ -653,3 +653,99 @@ def constant_gm_bias(nmoslk,pmoslk, s, d):
     m3 = get_all_mos(pmoslk, GM_ID=gm_ID3,L=L12, GM=gm_ID3*ID, ID=ID)
     
     return m1,m2,m3
+def ldo_regulator(nmoslk, pmoslk, spec, param):
+        #Spec
+    VDD = spec['VDD']
+    Vout = spec['Vout']
+    Iout = spec['Iout']
+    Lballast = param['Lballast']
+    Lpmirror = param['Lpmirror']
+    Ln = param['Ln']
+    gm_id1 = param['gm_id1']
+
+    VDS_M1 = VDD - Vout
+    #Size M1
+    #Vdsat < 300mV => 2/(gm_id1) < 300mV
+    #gm_id1 >= 2 / 0.3
+    #gm_id1 = 10
+    #gm_id1 = np.linspace(5,25,10)
+    MIN_gm_id1 = 2 / (VDD - Vout)
+    
+    JD1 = pmoslk.lookup('ID_W', GM_ID = gm_id1, VDS = VDS_M1, L=Lballast)
+    W1 = Iout / JD1
+    #Compute low freq gain
+    gds_id1 = pmoslk.lookup('GDS_ID', GM_ID = gm_id1, VDS = VDS_M1, L=Lballast)
+    A1 = gm_id1 / (1/Vout + gds_id1)
+    #Additionnal cap 
+    cgs1 = pmoslk.lookup('CGS_W', GM_ID = gm_id1, VDS = VDS_M1, L=Lballast) * W1
+    cgd1 = pmoslk.lookup('CGD_W', GM_ID = gm_id1, VDS = VDS_M1, L=Lballast) * W1
+
+    ##Compute GDS_ID Mirroir P from what we know
+    VGS_M1 = pmoslk.lookupVGS(GM_ID=gm_id1, VDS = VDS_M1, L=Lballast)
+    vd_mirror_P  = VDD - VGS_M1; 
+    gds_id_pmirror = pmoslk.lookup('GDS_ID', VGS=VGS_M1, VDS=VGS_M1,L=Lpmirror)
+
+    ##Compute Mirror M
+    ##What we want VDS_Ndiffpair 
+    ##WHat we know :
+    VDS_Pmirror = VGS_M1
+    VD_Ndiffpair = VDD - VDS_Pmirror
+    #VS ? 
+    #VS = Vout - VGS_Ndiffpair
+    Vs = np.linspace(0.3, VDD/2, 50)
+    Adiff = []
+    gm_id_nmirror = []
+    for k in range(len(Vs)):
+        _gm_id_nmirror = nmoslk.lookup('GM_ID', VGS = Vout- Vs[k], VDS = VD_Ndiffpair - Vs[k], VSB = -Vs[k], L=Ln)
+        gds_id_nmirror = nmoslk.lookup('GDS_ID', VGS = Vout- Vs[k], VDS = VD_Ndiffpair - Vs[k], VSB = -Vs[k], L=Ln)
+        Adiff.append(_gm_id_nmirror / (gds_id_nmirror + gds_id_pmirror))
+        gm_id_nmirror.append(_gm_id_nmirror)
+
+    A_tot = np.multiply(A1,Adiff)
+
+    fig,ax1 = plt.subplots(figsize=(6, 4))
+    ax1.plot(gm_id_nmirror, A_tot, linewidth=1.5, label=f"gmid = {gm_id1}")
+    ax1.set_xlabel('$GM_{IDNmirror}$ (S/A)', fontsize=12)
+    ax1.set_ylabel('$A_{TOT}$', fontsize=12)
+    ax1.grid(True, which='both', linestyle='-', linewidth=0.5, color='gray', alpha=0.7)
+    ax1.legend(loc='center right', bbox_to_anchor=(1, 0.9))
+    plt.tight_layout()
+    plt.show()
+
+    gain_target = spec['A0']
+    VS = interp1(A_tot, Vs, gain_target)
+    #print(VS)
+
+    ##Get for Gain set in spec
+    Vs = VS
+    ##MOS L W
+    Id_amp = Iout * 0.02
+    Jdpmirror = pmoslk.lookup('ID_W', VGS=VGS_M1, VDS=VGS_M1, L=Lpmirror)
+    Wp = Id_amp / Jdpmirror
+    Jdndiffpair = nmoslk.lookup('ID_W', VGS = Vout - Vs, VDS = VD_Ndiffpair - Vs, VSB = -Vs, L=Ln)
+    Wn = Id_amp / Jdndiffpair
+    gm_id_n_diffpair = nmoslk.lookup('GM_ID', VGS = Vout- Vs, VDS = VD_Ndiffpair - Vs, VSB = -Vs, L=Ln)
+    gds_id_n_diffpair = nmoslk.lookup('GDS_ID', VGS = Vout- Vs, VDS = VD_Ndiffpair - Vs, VSB = -Vs, L=Ln)
+    gm_id_p_mirror = pmoslk.lookup('GM_ID', VGS=VGS_M1, VDS=VGS_M1,L=Lpmirror)
+    gds_id_p_mirror = pmoslk.lookup('GDS_ID', VGS=VGS_M1, VDS=VGS_M1,L=Lpmirror)
+
+    ###PSR
+    gds_gds1 = pmoslk.lookup('GM_GDS', GM_ID = gm_id1, VDS = VDS_M1, L=Lballast)
+    Aa = gm_id_n_diffpair / (gds_id_n_diffpair+gds_id_p_mirror)
+    PSR = gds_gds1 * Aa
+    Atot = Aa * A1
+
+    m1 = get_all_mos(pmoslk, GM_ID=gm_id1,L=Lballast, GM=gm_id1*Iout, ID=Iout)
+    mp = get_all_mos(pmoslk, GM_ID=gm_id_p_mirror,L=Lpmirror, GM=gm_id_p_mirror*Id_amp, ID=Id_amp)
+    mn = get_all_mos(pmoslk, GM_ID=gm_id_n_diffpair,L=Ln, GM=gm_id_n_diffpair*Id_amp, ID=Id_amp)
+
+    perf = {
+        'PSR' : PSR,
+        'Atot' : Atot,
+        'Aa' : Aa,
+        'A1' : A1,
+        'MIN_gm_id1' : MIN_gm_id1            
+            }
+
+
+    return m1, mp, mn, perf 
