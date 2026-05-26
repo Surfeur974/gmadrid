@@ -306,7 +306,7 @@ def print_design_summary(*args):
             return str(val), ""
         a = abs(val)
         for threshold, divisor, suffix in [
-            (1e9, 1e9, "G"), (1e6, 1e6, "M"), (1, 1, ""), (1e-3, 1e-3, "m"),
+            (1e9, 1e9, "G"), (1e5, 1e6, "M"), (1, 1, ""), (1e-3, 1e-3, "m"),
             (1e-6, 1e-6, "u"), (1e-9, 1e-9, "n"), (1e-12, 1e-12, "p"), (1e-15, 1e-15, "f"),
         ]:
             if a >= threshold:
@@ -342,7 +342,7 @@ def print_design_summary(*args):
     )
     display(HTML(f"<table style='border-collapse:collapse; background:{BG}'>{tr_html}</table>"))
 
-def folded_cascode(nmoslk, pmoslk, s, d): ##Version Matriced
+def sc_folded_cascode(nmoslk, pmoslk, s, d): ##Version Matriced
     """
     Size a folded-cascode amplifier using the gm/ID methodology.
 
@@ -904,3 +904,119 @@ def telesopic_cascode(nmoslk, pmoslk, s, d): ##Version Matriced
         #'FP2 / FU1' : d['fp2'] / (wu1 * 1/(2*np.pi))
     }
     return m1,m5,m7,m3,mosbias,p
+
+def folded_cascode(nmoslk, pmoslk, s, d): ##Without capacitive feedback
+    """
+    Size a folded-cascode amplifier using the gm/ID methodology.
+
+    Sweeps β and gm/ID simultaneously to find the design points that meet
+    the noise and speed specifications, then computes the self-loading
+    capacitance at each point.
+
+    nmoslk / pmoslk are gm/ID lookup tables for the NMOS and PMOS devices.
+
+    s must contain:
+        fu1       — unity-gain frequency (Hz)
+        vod_noise — output-referred noise voltage (V)
+        FO        — fan-out
+        G         — closed-loop gain
+        vod_final — voltage ouput step max
+        ed — erreur settling %
+        VDD
+        VCM
+        V_SWING_P2P_DIFF
+
+    d must contain:
+        gm_ID1   — gm/ID sweep vector for the input transistor (S/A)
+        beta     — feedback factor sweep vector
+        L1       — input transistor length (µm)
+        Lcas     — cascode length (µm)
+        gm_IDcas — cascode gm/ID operating point (S/A)
+        gamma    — excess noise coefficient
+        cself    — self-loading estimate, set to 0 on first pass (F)
+
+    Returns m1 (ID, gm_ID) and p (cltot, cself) at each matched design point.
+    """
+    VDD = s['VDD']
+    VCM = s['VCM']
+    V_SWING_P2P_DIFF = s['V_SWING_P2P_DIFF']
+    VOUT_CM_HIGH = VCM+V_SWING_P2P_DIFF/2
+    VOUT_CM_LOW = VCM-V_SWING_P2P_DIFF/2
+    VDS_MOS = VOUT_CM_LOW/2
+    kB = 1.3806488e-23
+    temp = 300
+    # ── Device lookups over the gm/ID sweep vector ────────────────────────────
+    gm_gds1  = pmoslk.look_up('GM_GDS',  GM_ID=d['gm_ID1'],   L=d['L1'])
+    wt1      = pmoslk.look_up('GM_CGG',  GM_ID=d['gm_ID1'],   L=d['L1'])
+    cgd_cgg1 = pmoslk.look_up('CGD_CGG', GM_ID=d['gm_ID1'],   L=d['L1'])
+    gm_gds2  = nmoslk.look_up('GM_GDS',  GM_ID=d['gm_IDcas'], L=d['Lcas'])
+    cdd_gm3  = nmoslk.look_up('CDD_GM',  GM_ID=d['gm_IDcas'], L=d['Lcas'])
+    cdd_gm4  = pmoslk.look_up('CDD_GM',  GM_ID=d['gm_IDcas'], L=d['Lcas'])
+
+    # ── Step 2 : sweep β — broadcast to 2D (N_beta, N_gm_ID1) ────────────────
+    gm_ID1 = d['gm_ID1']
+    alpha = 2 * d['gamma'] * (1 + 3 * d['gm_IDcas'] / gm_ID1)
+    cltot = s['cload'] + d['cself']
+    kappa = 1 / (1 + gm_ID1 / (gm_gds1 * d['gm_IDcas']) + 2 / gm_gds2)
+    gm1 = 2 * np.pi * s['fu1'] * cltot / kappa
+    m1_gm1 = gm1
+    ID1 = gm1 / gm_ID1
+    m1_gm_id1 = d['gm_ID1']
+
+    # Step 3f. C_gg1 from g_m and f_Ti → compute C_gd1 and C_in (eq. 6.47)
+    cgs1 = gm1 / wt1
+    cin  = cgs1 * (1 + cgd_cgg1 * gm_ID1 / d['gm_IDcas'])
+
+    
+    
+    #Fill output with MOS charac
+    m1 = get_all_mos(pmoslk, GM_ID=m1_gm_id1,L=d['L1'], GM=m1_gm1, ID=ID1)
+    m2 = get_all_mos(nmoslk, GM_ID=d['gm_IDcas'], L=d['Lcas'], ID=2*ID1, VDS=VDS_MOS)
+    m3 = get_all_mos(nmoslk, GM_ID=d['gm_IDcas'], L=d['Lcas'], ID=ID1, VDS=VDS_MOS)
+    m4 = get_all_mos(pmoslk, GM_ID=d['gm_IDcas'], L=d['Lcas'], ID=ID1, VDS=VDS_MOS)
+    m5 = get_all_mos(pmoslk, GM_ID=d['gm_IDcas'], L=d['Lcas'], ID=ID1, VDS=VDS_MOS)
+
+    #######Calc GAIN
+    gds5    = pmoslk.look_up( 'GDS_ID', GM_ID=d['gm_IDcas'], L=d['Lcas'], VDS=VDS_MOS) * ID1
+    gds4    = pmoslk.look_up( 'GDS_ID', GM_ID=d['gm_IDcas'], L=d['Lcas'], VDS=VCM-VDS_MOS, VSB = VDS_MOS) * ID1
+    gm4     = pmoslk.look_up( 'GM_ID', GM_ID=d['gm_IDcas'], L=d['Lcas'], VDS=VCM-VDS_MOS, VSB = VDS_MOS) * ID1
+    gds3    = nmoslk.look_up( 'GDS_ID', GM_ID=d['gm_IDcas'], L=d['Lcas'], VDS=VCM-VDS_MOS, VSB = VDS_MOS) * ID1
+    gm3     = nmoslk.look_up( 'GM_ID', GM_ID=d['gm_IDcas'], L=d['Lcas'], VDS=VCM-VDS_MOS) * ID1
+    gds2    = nmoslk.look_up( 'GDS_ID', GM_ID=d['gm_IDcas'], L=d['Lcas'], VDS=VDS_MOS) * 2 * ID1
+    gds1    = pmoslk.look_up( 'GDS_ID', GM_ID=m1_gm_id1, L=d['L1']) * 2 * ID1
+    gds_gm1    = pmoslk.look_up( 'GDS_GM', GM_ID=m1_gm_id1, L=d['L1'])
+    gm_gds2    = pmoslk.look_up( 'GM_GDS', GM_ID=d['gm_IDcas'], L=d['Lcas'], VDS=VDS_MOS)
+    gm1 = m1_gm_id1 * ID1
+
+    rout = 1 / ( gds4 / (1+gm4/gds5) + gds3 / (1 + gm3 / (gds1+gds2) ))
+    kappa = 1 / ( 1 + gds1 / gm3 + 2 / gm_gds2)
+    L0 = 20*np.log10(kappa * gm1 * rout)
+    #L0 = 20*np.log10(gm1 * rout)
+    cself = m1['ID'] * d['gm_IDcas'] * (cdd_gm3 + cdd_gm4)
+
+    nbw = np.pi / 2 * s['fu1']
+
+
+    S_i_out   = 16/3 * kB * temp * (gm1 + m2['GM'] + m5['GM']) #A**2/Hz
+    Svin = S_i_out / (gm1**2)
+    #Svin    = 16/3 * kB * temp / gm1 * (1 + m2['GM']/gm1 + m5['GM']/gm1 )
+    Svin  = np.sqrt(Svin)
+    IRN2 = Svin * np.sqrt(nbw)
+    IRN = np.sqrt(8* kB * temp/gm1 * nbw) * np.sqrt(1 + m2['GM']/gm1 + m5['GM']/gm1)
+
+    p = {
+        'cin': cin,
+        'nbw': nbw,
+        'S_i_out': S_i_out,
+        'SvinV/Hz^-1': Svin,
+        'IRN': IRN,
+        'IRN2': IRN2,
+        'cltot': cltot,
+        'cself': cself,
+        'L0' : L0,
+        'FP1' : 1/(rout * cltot),
+        'FP2' : d['fp2'],
+        'FP2 / FU1' : d['fp2'] / (s['fu1']),
+        'VDS_MOS' : VDS_MOS
+    }
+    return m1,m2,m3,m4,m5,p

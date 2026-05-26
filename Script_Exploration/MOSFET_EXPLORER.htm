@@ -104,6 +104,14 @@ input[type=range]{width:100%;padding:0;height:3px;background:var(--border);borde
 ::-webkit-scrollbar{width:3px;}
 ::-webkit-scrollbar-track{background:transparent;}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+
+/* Dual VGS range slider */
+.dual-range-wrap{position:relative;height:18px;margin-bottom:3px;}
+.dual-range-wrap input[type=range]{position:absolute;width:100%;pointer-events:none;height:3px;background:transparent;padding:0;margin:0;top:7px;}
+.dual-range-wrap input[type=range]::-webkit-slider-thumb{pointer-events:all;width:13px;height:13px;border-radius:50%;background:var(--accent);border:2px solid var(--bg);cursor:pointer;-webkit-appearance:none;box-shadow:0 0 0 1px var(--accent);}
+.dual-range-wrap input[type=range]::-moz-range-thumb{pointer-events:all;width:11px;height:11px;border-radius:50%;background:var(--accent);border:2px solid var(--bg);cursor:pointer;}
+.dual-range-track{position:absolute;top:7px;left:0;right:0;height:3px;background:var(--border);border-radius:2px;pointer-events:none;}
+.dual-range-fill{position:absolute;top:7px;height:3px;background:var(--accent);border-radius:2px;pointer-events:none;opacity:.6;}
 </style>
 </head>
 <body>
@@ -153,6 +161,21 @@ input[type=range]{width:100%;padding:0;height:3px;background:var(--border);borde
       </div>
       <label class="ctrl-label">VSB (V)</label>
       <select id="vsbSelect" onchange="onBiasChange()"></select>
+      <label class="ctrl-label" style="margin-top:4px">VGS range (V)</label>
+      <div class="dual-range-wrap" id="vgsRangeWrap">
+        <div class="dual-range-track"></div>
+        <div class="dual-range-fill" id="vgsRangeFill"></div>
+        <input type="range" id="vgsMinSlider" min="0" max="1" step="1" value="0" oninput="onVgsRangeChange()">
+        <input type="range" id="vgsMaxSlider" min="0" max="1" step="1" value="1" oninput="onVgsRangeChange()">
+      </div>
+      <div class="slider-val">
+        <span id="vgsRangeMinLbl" style="color:var(--accent)">—</span>
+        <span style="color:var(--dim);font-size:8px">▐ VGS ▌</span>
+        <span id="vgsRangeMaxLbl" style="color:var(--accent)">—</span>
+      </div>
+      <div style="margin-bottom:4px">
+        <button class="btn btn-xs" style="width:100%;font-size:9px" onclick="resetVgsRange()">↺ Reset VGS range</button>
+      </div>
     </div>
     <div class="section" id="varsSection" style="display:none">
       <div class="sec-title">Variables — clic pour insérer</div>
@@ -193,6 +216,8 @@ let cursorEnabled = true;
 let cursorX = null;
 let cursorLerp = null;
 let showDataList = true;
+let vgsMinIdx = 0;
+let vgsMaxIdx = 0;
 
 const COLORS = [
   '#00d4ff','#ff6b35','#7c3aed','#22c55e','#f59e0b',
@@ -461,6 +486,15 @@ function buildControls(params) {
   document.getElementById('vsbSelect').innerHTML =
     matData.VSB.map((v,i) => '<option value="'+i+'">' + v.toFixed(2) + ' V</option>').join('');
 
+  // VGS range sliders
+  const nVGS = matData.VGS.length;
+  const minSl = document.getElementById('vgsMinSlider');
+  const maxSl = document.getElementById('vgsMaxSlider');
+  minSl.min = 0; minSl.max = nVGS - 1; minSl.value = 0;
+  maxSl.min = 0; maxSl.max = nVGS - 1; maxSl.value = nVGS - 1;
+  vgsMinIdx = 0; vgsMaxIdx = nVGS - 1;
+  updateVgsRangeUI();
+
   // Vars grid
   const allVars = [...Object.keys(matData.params), 'VGS','VDS','W','L','PI'];
   document.getElementById('varsGrid').innerHTML = allVars
@@ -490,6 +524,40 @@ function updateVdsLabel() {
 }
 function onBiasChange() { updateVdsLabel(); renderAllPanels(); }
 
+function onVgsRangeChange() {
+  if (!matData) return;
+  let lo = parseInt(document.getElementById('vgsMinSlider').value);
+  let hi = parseInt(document.getElementById('vgsMaxSlider').value);
+  // Ensure lo <= hi (swap thumbs feel)
+  if (lo > hi) { [lo, hi] = [hi, lo]; }
+  vgsMinIdx = lo; vgsMaxIdx = hi;
+  updateVgsRangeUI();
+  renderAllPanels();
+}
+
+function updateVgsRangeUI() {
+  if (!matData) return;
+  const nVGS = matData.VGS.length;
+  document.getElementById('vgsRangeMinLbl').textContent = matData.VGS[vgsMinIdx].toFixed(3) + 'V';
+  document.getElementById('vgsRangeMaxLbl').textContent = matData.VGS[vgsMaxIdx].toFixed(3) + 'V';
+  // Update fill bar
+  const fill = document.getElementById('vgsRangeFill');
+  const loFrac = vgsMinIdx / (nVGS - 1);
+  const hiFrac = vgsMaxIdx / (nVGS - 1);
+  fill.style.left  = (loFrac * 100) + '%';
+  fill.style.width = ((hiFrac - loFrac) * 100) + '%';
+}
+
+function resetVgsRange() {
+  if (!matData) return;
+  const nVGS = matData.VGS.length;
+  document.getElementById('vgsMinSlider').value = 0;
+  document.getElementById('vgsMaxSlider').value = nVGS - 1;
+  vgsMinIdx = 0; vgsMaxIdx = nVGS - 1;
+  updateVgsRangeUI();
+  renderAllPanels();
+}
+
 function selectAllL() {
   matData.L.forEach((_,i) => selectedL.add(i));
   document.querySelectorAll('.l-chip').forEach(c => c.classList.add('selected'));
@@ -515,6 +583,7 @@ function selectDefaultL() {
 function evalExpr(expr, lIdx, vdsIdx, vsbIdx) {
   if (!expr || !matData) return null;
   const nVGS = matData.VGS.length;
+  const lo = vgsMinIdx; const hi = vgsMaxIdx;
   const ctx = {};
   for (const [name, d4] of Object.entries(matData.params)) {
     ctx[name] = new Float64Array(nVGS);
@@ -528,14 +597,14 @@ function evalExpr(expr, lIdx, vdsIdx, vsbIdx) {
   const PI = Math.PI;
   const np = {log:Math.log, log10:Math.log10, abs:Math.abs, sqrt:Math.sqrt, exp:Math.exp};
   const keys = Object.keys(ctx);
-  const result = new Float64Array(nVGS);
-  for (let i = 0; i < nVGS; i++) {
+  const result = [];
+  for (let i = lo; i <= hi; i++) {
     const lv = {}; for (const k of keys) lv[k] = ctx[k] instanceof Float64Array ? ctx[k][i] : ctx[k];
     lv.np = np; lv.PI = PI;
-    try { result[i] = new Function(...Object.keys(lv), 'return ' + expr + ';')(...Object.values(lv)); }
+    try { result.push(new Function(...Object.keys(lv), 'return ' + expr + ';')(...Object.values(lv))); }
     catch { return null; }
   }
-  return Array.from(result);
+  return result;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -598,6 +667,10 @@ function renderPanel(idx) {
 
   const vds = matData.VDS[vdsIdx].toFixed(3);
   const vsb = matData.VSB[vsbIdx].toFixed(2);
+  const vgsLo = matData.VGS[vgsMinIdx].toFixed(3);
+  const vgsHi = matData.VGS[vgsMaxIdx].toFixed(3);
+  const vgsRangeStr = (vgsMinIdx===0 && vgsMaxIdx===matData.VGS.length-1)
+    ? '' : '  VGS=['+vgsLo+'…'+vgsHi+']V';
   const y2lbl = useY2 ? '  ─ ' + y2Expr : '';
 
   let layout = {
@@ -607,7 +680,7 @@ function renderPanel(idx) {
     yaxis:{title:{text:y1Expr+y2lbl,font:{color:'#94a3b8',size:10},standoff:4},type:logY?'log':'linear',gridcolor:'#161b27',linecolor:'#1f2430',zerolinecolor:'#1f2430',tickfont:{size:9}},
     legend:{bgcolor:'rgba(17,19,24,.88)',bordercolor:'#1f2430',borderwidth:1,font:{size:9},x:1,xanchor:'right',y:1,yanchor:'top'},
     margin:{l:54,r:8,t:24,b:44},
-    title:{text:'<span style="font-size:9px;color:#334155">VDS='+vds+'V  VSB='+vsb+'V</span>',x:0.01,xanchor:'left',y:0.995,yanchor:'top'},
+    title:{text:'<span style="font-size:9px;color:#334155">VDS='+vds+'V  VSB='+vsb+'V'+vgsRangeStr+'</span>',x:0.01,xanchor:'left',y:0.995,yanchor:'top'},
     hovermode:'closest'
   };
 
