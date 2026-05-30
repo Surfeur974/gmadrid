@@ -294,6 +294,7 @@ def get_all_mos(moslk, GM_ID, L, GM=None, VDS=None, VSB=None, ID=None):
     mos['GM'] = GM_ID * ID
     mos['W'] = ID / mos['ID_W']
     mos['L'] = L
+    mos['VDS'] = VDS
     #mos['VGS'] = moslk.lookupVGS(GM_ID=GM_ID, VDS=VDS, L=L)
 
     return mos
@@ -1020,3 +1021,154 @@ def folded_cascode(nmoslk, pmoslk, s, d): ##Without capacitive feedback
         'VDS_MOS' : VDS_MOS
     }
     return m1,m2,m3,m4,m5,p
+
+def telesopic_cascode_current_reuse(nmoslk, pmoslk, s, d): ##Version Matriced
+    """
+    Size a folded-cascode amplifier using the gm/ID methodology.
+
+    Sweeps β and gm/ID simultaneously to find the design points that meet
+    the noise and speed specifications, then computes the self-loading
+    capacitance at each point.
+
+    nmoslk / pmoslk are gm/ID lookup tables for the NMOS and PMOS devices.
+
+    s must contain:
+        fu1       — unity-gain frequency (Hz)
+        vod_noise — output-referred noise voltage (V)
+        FO        — fan-out
+        G         — closed-loop gain
+        vod_final — voltage ouput step max
+        ed — erreur settling %
+        VDD
+        VCM
+        V_SWING_P2P_DIFF
+
+    d must contain:
+        gm_ID1   — gm/ID sweep vector for the input transistor (S/A)
+        beta     — feedback factor sweep vector
+        L1       — input transistor length (µm)
+        Lcas     — cascode length (µm)
+        gm_IDcas — cascode gm/ID operating point (S/A)
+        gamma    — excess noise coefficient
+        cself    — self-loading estimate, set to 0 on first pass (F)
+
+    Returns m1 (ID, gm_ID) and p (cltot, cself) at each matched design point.
+    """
+    VDD = s['VDD']
+    VCM = s['VCM']
+    V_SWING_P2P_DIFF = s['V_SWING_P2P_DIFF']
+    VOUT_CM_HIGH = VCM+V_SWING_P2P_DIFF/2
+    VOUT_CM_LOW = VCM-V_SWING_P2P_DIFF/2
+    VDS_MOS = VOUT_CM_LOW/3
+    VS = s['VS']
+    #gm3_gm1 = d['gm3_gm1']
+    beta_max = 1 / (1 + s['G'])
+    kB = 1.3806488e-23
+    temp = 300
+    # ── Device lookups over the gm/ID sweep vector ────────────────────────────
+    gm_gds1  = nmoslk.look_up('GM_GDS',  GM_ID=d['gm_ID1'],   L=d['Lnmos'])
+    wt1      = nmoslk.look_up('GM_CGG',  GM_ID=d['gm_ID1'],   L=d['Lnmos'])
+    wt3      = pmoslk.look_up('GM_CGG',  GM_ID=d['gm_ID1'],   L=d['Lpmos'])
+    cdd_gm7  = pmoslk.look_up('CDD_GM',  GM_ID=d['gm_IDcas'], L=d['Lcas'])
+    cdd_gm5  = nmoslk.look_up('CDD_GM',  GM_ID=d['gm_ID1'], L=d['Lcas'])
+
+    # ── Step 2 : sweep β — broadcast to 2D (N_beta, N_gm_ID1) ────────────────
+    beta   = d['beta'][:, None]    # (N, 1)
+    gm_ID1 = d['gm_ID1'][None, :] # (1, M)
+
+    # Step 3a. Excess noise factor α (eq. 6.54)
+    # alpha = 2 * d['gamma'] * (1 + 3 * d['gm_IDcas'] / gm_ID1)
+    alpha = 2 * d['gamma'] * (gm_ID1 / gm_ID1)
+    #alpha = 2 * d['gamma']
+
+    # Step 3b. C_Ltot from noise spec (eq. 6.53) — also fixes C_S, C_F, C_L
+    cltot = alpha / beta * kB * temp / s['vod_noise']**2
+    cltot[cltot<= 200e-15] = 200e-15
+    CF    = (cltot - d['cself']) / (s['FO'] * s['G'] + 1 - beta)
+    CS    = s['G'] * CF
+    CL   = s['FO'] * CS
+
+    # Step 3c. Current division factor κ (eq. 6.43)
+    #kappa = 1 / (1 + gm_ID1 / (gm_gds1 * d['gm_IDcas']) + 2 / gm_gds2)
+
+    #Slewing compute X, then more accurate wu1 
+    X = s['vod_final'] * beta / 2 * gm_ID1
+    wu1 = 1 / s['ts']*(X - 1 + np.log(1/(s['ed']*X)))
+
+    # Step 3d. g_m1 from settling formula above 
+    #gm1 = 2 * np.pi * s['fu1'] * cltot / beta / kappa
+    gm1 = wu1 * cltot / beta
+    ##Current re-use effect
+    gm1 = gm1/2 
+    # Step 3e. I_D1 and f_Ti from the gm/ID vector
+    ID1 = gm1 / gm_ID1
+
+    # Step 3f. C_gg1 from g_m and f_Ti → compute C_gd1 and C_in (eq. 6.47)
+    ##Current re-use effect input cap
+    cgs = gm1 / wt1 + gm1 / wt3
+    #cin  = cgs1 * (1 + cgd_cgg1 * gm_ID1 / d['gm_IDcas'])
+    cin  = cgs
+
+    # Step 3g. Actual β values along the gm/ID vector (eq. 6.46)
+    beta_actual = CF / (CF + CS + cin)
+
+    # ── Step 4 : find closest match between β_actual and β_k ─────────────────
+    idx = np.argmin(np.abs(beta_actual - beta), axis=1)  # (N,)
+    j   = np.arange(len(d['beta']))
+    
+    m1_gm1 = gm1[j, idx]
+    m1_gm_id1 = d['gm_ID1'][idx]
+    ID1 = gm1[j, idx] / d['gm_ID1'][idx]
+    
+    #Cascode bias MOS
+    VGS_M5 = nmoslk.lookupVGS(GM_ID=m1_gm_id1, VDS=VDS_MOS, L=d['Lcas'])
+    vgs_bias = VDS_MOS + VGS_M5 
+    #vgs_bias = 1
+    ibias_mosbias = ID1 / 10
+    L_mosbias = 7
+    vgs_bias = vgs_bias
+    JD_mosbias = nmoslk.look_up('ID_W', VGS=vgs_bias, VDS=vgs_bias, L=L_mosbias, VSB=VS)
+    JD_mosbias2 = nmoslk.look_up('ID_W', VGS=vgs_bias, VDS=vgs_bias, L=L_mosbias, VSB=VS+vgs_bias)
+
+    mosbias = {
+                'bias_needed > ' : VDS_MOS + VGS_M5,
+                'ibias_mosbias' : ibias_mosbias,
+                'vgs_bias' : vgs_bias,
+                'L' : L_mosbias,
+                'W' : ibias_mosbias / JD_mosbias,
+                'W_mosbias2' : ibias_mosbias / JD_mosbias2,
+               }
+
+    # mosbias = adri.get_all_mos(nmoslk, GM_ID=25, L=d['Lcas'], ID=ibias_mosbias, VDS=VGS_M5, VSB = VS)
+    # print(mosbias)
+    #Fill output with MOS charac
+    m3 = get_all_mos(pmoslk, GM_ID=m1_gm_id1, L=d['Lpmos'], GM=m1_gm1,  ID=ID1, VDS=VDS_MOS,)
+    m7 = get_all_mos(pmoslk, GM_ID=d['gm_IDcas'], L=d['Lcas'],         ID=ID1, VDS=VCM-VDS_MOS-VS)
+    m5 = get_all_mos(nmoslk, GM_ID=d['gm_IDcas'], L=d['Lcas'],         ID=ID1, VDS=VCM-VDS_MOS-VS)
+    m1 = get_all_mos(nmoslk, GM_ID=m1_gm_id1,L=d['Lnmos'], GM=m1_gm1,   ID=ID1, VDS=VDS_MOS)
+
+    #Compute gain param
+    gm_gds3 = pmoslk.lookup('GM_GDS', GM_ID = m1_gm_id1, L = d['Lpmos'], VDS = VDS_MOS, VSB =  0)
+    gm_gds7 = pmoslk.lookup('GM_GDS', GM_ID = d['gm_IDcas'], L = d['Lcas'], VDS = VCM-VDS_MOS-VS, VSB = VDS_MOS)
+    gm_gds5 = nmoslk.lookup('GM_GDS', GM_ID = d['gm_IDcas'], L = d['Lcas'], VDS = VCM-VDS_MOS-VS, VSB = VDS_MOS+VS)
+    gm_gds1 = nmoslk.lookup('GM_GDS', GM_ID = m1_gm_id1, L = d['Lnmos'], VDS = VDS_MOS, VSB = VS)
+
+    gm1 = m1_gm_id1 * ID1
+    gm3_gm1 = d['gm_IDcas'] / m1_gm_id1
+
+    #kappa = 1 / ( 1 + gds1 / gm3 + 2 / gm_gds2)
+    L0 = 20*np.log10(2/(1/(gm_gds1*gm_gds5)+gm3_gm1*(1/(gm_gds3*gm_gds7))) * beta)
+
+    p = {
+        'cltot': cltot[j, idx],
+        'cself': m1['ID'] * d['gm_IDcas'] * (cdd_gm5 + cdd_gm7),
+        #'beta' : beta,
+        'L0' : L0,
+        'CF' : CF,
+        'CS' : CS,
+        'CL' : CL,
+        'fu1' : wu1 * 1/(2*np.pi),
+        'beta_betamax' : beta_actual / d['beta'],
+        #'FP2 / FU1' : d['fp2'] / (wu1 * 1/(2*np.pi))
+    }
+    return m1,m5,m7,m3,mosbias,p
